@@ -65,19 +65,16 @@ python -m venv venv && source venv/bin/activate
 # 2. Install dependencies
 pip install -r requirements/dev.txt
 
-# 3. Copy environment config (optional for SQLite — defaults work)
-cp .env.example .env
-
-# 4. Apply migrations (creates db.sqlite3 in project root)
+# 3. Apply migrations (creates db.sqlite3 in project root)
 python manage.py migrate
 
-# 5. Create role groups (Super Admin, Principal, Coordinator, Teacher, Accountant, HR, Receptionist, Student, Parent)
+# 4. Create role groups (Super Admin, Principal, Coordinator, Teacher, Accountant, HR, Receptionist, Student, Parent)
 python manage.py create_school_roles
 
-# 6. Generate demo data
+# 5. Generate demo data
 python manage.py generate_demo_data
 
-# 7. Run server
+# 6. Run server
 python manage.py runserver
 ```
 
@@ -93,34 +90,6 @@ Open `http://localhost:8000/` and log in with one of these:
 | hr_payroll   | admin123  | HR / Payroll Officer  |
 | receptionist | admin123  | Receptionist          |
 | teacher1     | admin123  | Teacher               |
-
-## Switching to PostgreSQL (optional, for production)
-
-For high-traffic deployments (multiple schools, hundreds of concurrent fee payments), you can switch to PostgreSQL by setting env vars and running the setup script:
-
-```bash
-# 1. Install PostgreSQL (e.g. sudo apt install postgresql postgresql-contrib)
-# 2. Edit password in scripts/setup_postgres.sql, then run as postgres user:
-sudo -u postgres psql -f scripts/setup_postgres.sql
-
-# 3. Set these in .env (uncomment the lines):
-#    DB_ENGINE=django.db.backends.postgresql
-#    DB_NAME=school_erp
-#    DB_USER=school_erp_user
-#    DB_PASSWORD=<password from step 2>
-#    DB_HOST=localhost
-#    DB_PORT=5432
-
-# 4. Verify connection (optional)
-python manage.py check_db
-
-# 5. Migrate against PostgreSQL + load data
-python manage.py migrate
-python manage.py create_school_roles
-python manage.py generate_demo_data
-```
-
-The setup script enables `pg_trgm`, `unaccent`, and `citext` extensions, sets the timezone, and sets a 30-second statement timeout to catch runaway queries.
 
 ## Management Commands
 
