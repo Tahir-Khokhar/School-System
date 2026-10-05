@@ -5,7 +5,7 @@ A complete, production-style Django-based School ERP & Management web applicatio
 ## Tech Stack
 
 - **Backend**: Python 3.12, Django 4.2, Django ORM, Class-Based Views, Django Forms & Formsets
-- **Database**: SQLite 3 (default — zero setup) / PostgreSQL 12+ (optional, for high-traffic deployments)
+- **Database**: SQLite 3 
 - **Auth & Security**: Django auth, Groups, Permissions, Custom User model, role-based access control, **Two-Factor Authentication** (TOTP), **rate limiting**, **Content Security Policy**
 - **Payments**: Pluggable gateway abstraction (Stripe, JazzCash, Test) with **server-side webhook verification**
 - **Frontend**: Bootstrap 5, Bootstrap Icons, Chart.js, Font Awesome, vanilla JS
