@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+<h1 class="h3 fw-bold mb-0">{{ admission.application_no|default:"Draft Application" }}</h1>
+<span class="badge badge-status badge-{{ admission.status }} p-2">{{ admission.get_status_display }}</span>
+</div>
+
+<div class="card mb-4">
+<div class="card-body">
+<h6>Workflow Progress</h6>
+<div class="d-flex justify-content-between align-items-center mt-3">
+{% for label, value in workflow_steps %}
+<div class="text-center flex-grow-1">
+<div class="badge rounded-pill {% if admission.status == value %}bg-primary{% elif admission.status == 'completed' or forloop.counter < 6 %}bg-success{% else %}bg-light text-dark border{% endif %} p-3" style="width:36px;height:36px;border-radius:50%!important">{{ forloop.counter }}</div>
+<div class="small mt-1 {% if admission.status == value %}fw-bold{% endif %}">{{ label }}</div>
+</div>
+{% if not forloop.last %}<div class="flex-grow-1"><hr class="my-0"></div>{% endif %}
+{% endfor %}
+</div>
+</div>
+</div>
+
+<div class="row g-3">
+<div class="col-md-6"><div class="card"><div class="card-header">Personal Information</div><div class="card-body p-0"><table class="table mb-0">
+<tr><th class="w-40">Name</th><td>{{ admission.full_name }}</td></tr>
+<tr><th>Father</th><td>{{ admission.father_name|default:"—" }}</td></tr>
+<tr><th>Mother</th><td>{{ admission.mother_name|default:"—" }}</td></tr>
+<tr><th>Date of Birth</th><td>{{ admission.date_of_birth|date:"M d, Y"|default:"—" }}</td></tr>
+<tr><th>Gender</th><td>{{ admission.get_gender_display }}</td></tr>
+<tr><th>CNIC/B-Form</th><td>{{ admission.cnic_bform|default:"—" }}</td></tr>
+<tr><th>Contact</th><td>{{ admission.contact_phone|default:"—" }}</td></tr>
+<tr><th>Address</th><td>{{ admission.address|default:"—" }}</td></tr>
+</table></div></div></div>
+<div class="col-md-6"><div class="card"><div class="card-header">Academic & Parent Info</div><div class="card-body p-0"><table class="table mb-0">
+<tr><th class="w-40">Applying for Class</th><td>{{ admission.applying_class.name }}{% if admission.applying_section %}-{{ admission.applying_section.name }}{% endif %}</td></tr>
+<tr><th>Academic Year</th><td>{{ admission.academic_year.name }}</td></tr>
+<tr><th>Admission Date</th><td>{{ admission.admission_date|date:"M d, Y" }}</td></tr>
+<tr><th>Previous School</th><td>{{ admission.previous_school|default:"—" }}</td></tr>
+<tr><th>Previous Class</th><td>{{ admission.previous_class|default:"—" }}</td></tr>
+<tr><th>Parent Name</th><td>{{ admission.parent_name|default:"—" }}</td></tr>
+<tr><th>Parent CNIC</th><td>{{ admission.parent_cnic|default:"—" }}</td></tr>
+<tr><th>Parent Phone</th><td>{{ admission.parent_phone|default:"—" }}</td></tr>
+</table></div></div></div>
+</div>
+
+<div class="mt-3">
+{% if perms.admissions.change_admission %}
+{% if admission.status == 'draft' %}<form method="post" action="{% url 'admissions:application_submit' admission.pk %}" class="d-inline">{% csrf_token %}<button class="btn btn-primary"><i class="bi bi-send me-1"></i>Submit Application</button></form>{% endif %}
+{% if admission.status == 'submitted' %}<form method="post" action="{% url 'admissions:application_verify' admission.pk %}" class="d-inline">{% csrf_token %}<button class="btn btn-info"><i class="bi bi-check2-circle me-1"></i>Verify</button></form>{% endif %}
+{% if admission.status == 'verified' %}<form method="post" action="{% url 'admissions:application_approve' admission.pk %}" class="d-inline">{% csrf_token %}<button class="btn btn-success"><i class="bi bi-check-circle me-1"></i>Approve</button></form>{% endif %}
+{% if admission.status == 'verified' or admission.status == 'submitted' %}<form method="post" action="{% url 'admissions:application_reject' admission.pk %}" class="d-inline">{% csrf_token %}<button class="btn btn-danger"><i class="bi bi-x-circle me-1"></i>Reject</button></form>{% endif %}
+{% if admission.status == 'approved' %}<form method="post" action="{% url 'admissions:application_register' admission.pk %}" class="d-inline">{% csrf_token %}<button class="btn btn-primary"><i class="bi bi-person-check me-1"></i>Register Student</button></form>{% endif %}
+{% if admission.status == 'approved' or admission.status == 'registered' %}<form method="post" action="{% url 'admissions:application_generate_challan' admission.pk %}" class="d-inline">{% csrf_token %}<button class="btn btn-outline-success"><i class="bi bi-receipt me-1"></i>Generate Admission Challan</button></form>{% endif %}
+{% endif %}
+{% if perms.admissions.change_admission %}<a href="{% url 'admissions:application_edit' admission.pk %}" class="btn btn-outline-secondary"><i class="bi bi-pencil me-1"></i>Edit</a>{% endif %}
+<a href="{% url 'admissions:application_list' %}" class="btn btn-outline-secondary">Back</a>
+</div>
+
+{% if admission.admission_challan %}
+<div class="card mt-3"><div class="card-header">Linked Admission Challan</div><div class="card-body"><a href="{% url 'fees:challan_detail' admission.admission_challan.pk %}" class="btn btn-success"><i class="bi bi-receipt me-1"></i>{{ admission.admission_challan.challan_no }} — {{ currency_symbol }}{{ admission.admission_challan.total_payable|floatformat:0 }}</a></div></div>
+{% endif %}
+{% if admission.student %}
+<div class="card mt-3"><div class="card-header">Linked Student Record</div><div class="card-body"><a href="{% url 'students:student_detail' admission.student.pk %}" class="btn btn-primary"><i class="bi bi-mortarboard me-1"></i>{{ admission.student.full_name }} — {{ admission.student.registration_no }}</a></div></div>
+{% endif %}
+{% endblock %}
