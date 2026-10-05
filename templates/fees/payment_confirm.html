@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load crispy_forms_tags %}
+
+{% block content %}
+<div class="container" style="max-width: 900px;">
+<h1 class="h3 fw-bold mb-3">Confirm Payment — {{ challan.challan_no }}</h1>
+<div class="row g-3">
+    <div class="col-md-5">
+        <div class="card mb-3"><div class="card-header">Challan Details</div><div class="card-body p-0">
+            <table class="table mb-0">
+                <tr><th class="w-50">Challan #</th><td>{{ challan.challan_no }}</td></tr>
+                <tr><th>Student</th><td><a href="{% url 'students:student_detail' challan.student_id %}">{{ challan.student.full_name }}</a></td></tr>
+                <tr><th>Registration</th><td>{{ challan.student.registration_no }}</td></tr>
+                <tr><th>Father</th><td>{{ challan.student.father_name|default:"—" }}</td></tr>
+                <tr><th>Class</th><td>{{ challan.student.class_section_display }}</td></tr>
+                <tr><th>Academic Year</th><td>{{ challan.academic_year.name }}</td></tr>
+                <tr><th>Month</th><td>{{ challan.month|default:"—" }}</td></tr>
+                <tr><th>Issue Date</th><td>{{ challan.issue_date|date:"M d, Y" }}</td></tr>
+                <tr><th>Due Date</th><td>{{ challan.due_date|date:"M d, Y"|default:"—" }}</td></tr>
+                <tr><th>Status</th><td><span class="badge badge-status badge-{{ challan.status }}">{{ challan.get_status_display }}</span></td></tr>
+            </table>
+        </div></div>
+        <div class="card"><div class="card-header">Fee Items</div><div class="card-body p-0">
+            <table class="table mb-0">
+                <thead><tr><th>Fee Type</th><th class="text-end">Amount</th></tr></thead>
+                <tbody>
+                    {% for item in items %}<tr><td>{{ item.fee_type.name }}</td><td class="text-end">{{ currency_symbol }}{{ item.amount|floatformat:0|intcomma }}</td></tr>{% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr><th class="text-end">Total Payable</th><th class="text-end">{{ currency_symbol }}{{ challan.total_payable|floatformat:0|intcomma }}</th></tr>
+                    <tr><th class="text-end">Total Paid</th><th class="text-end text-success">{{ currency_symbol }}{{ challan.total_paid|floatformat:0|intcomma }}</th></tr>
+                    <tr class="table-active"><th class="text-end">Balance Due</th><th class="text-end h5 text-danger">{{ currency_symbol }}{{ challan.balance|floatformat:0|intcomma }}</th></tr>
+                </tfoot>
+            </table>
+        </div></div>
+    </div>
+    <div class="col-md-7">
+        <div class="card"><div class="card-header"><i class="bi bi-cash-coin me-2 text-success"></i>Record Payment</div><div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                {{ form|crispy }}
+                <div class="d-grid gap-2 mt-3">
+                    <button class="btn btn-success btn-lg"><i class="bi bi-check-lg me-1"></i>Record Payment &amp; Mark Challan PAID</button>
+                    <a href="{% url 'fees:challan_detail' challan.pk %}" class="btn btn-outline-secondary">Cancel</a>
+                </div>
+            </form>
+        </div></div>
+    </div>
+</div>
+</div>
+{% endblock %}

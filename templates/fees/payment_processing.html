@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card text-center">
+            <div class="card-body p-5">
+                <div class="spinner-border text-primary mb-3" role="status"></div>
+                <h2 class="h4 mb-2">Processing your payment...</h2>
+                <p class="text-muted-2 mb-4">We're waiting for the payment gateway to confirm your transaction. This page will refresh automatically when the payment is verified.</p>
+                {% if challan %}<p class="small">Challan: <strong>{{ challan.challan_no }}</strong></p>{% endif %}
+                <p class="small text-muted-2"><i class="bi bi-shield-lock me-1"></i>For security, the payment is verified server-side via webhook before marking your challan as PAID.</p>
+                <a href="{% if challan %}{% url 'fees:challan_detail' challan.pk %}{% else %}{% url 'dashboard:home' %}{% endif %}" class="btn btn-outline-primary"><i class="bi bi-arrow-clockwise me-1"></i>Refresh</a>
+            </div>
+        </div>
+    </div>
+</div>
+<script>setTimeout(function(){location.reload();}, 5000);</script>
+{% endblock %}

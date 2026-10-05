@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 fw-bold mb-0"><i class="bi bi-exclamation-triangle text-warning me-2"></i>Fee Defaulters</h1>
+    <div class="text-end">
+        <h3 class="mb-0 text-danger">{{ currency_symbol }}{{ total_outstanding|floatformat:0|intcomma }}</h3>
+        <p class="text-muted-2 small mb-0">Total Outstanding</p>
+    </div>
+</div>
+<div class="card"><div class="card-body p-0">
+    {% if challans %}
+    <table class="table table-hover mb-0">
+        <thead><tr><th>Challan #</th><th>Student</th><th>Class</th><th>Month</th><th>Payable</th><th>Paid</th><th>Balance</th><th>Status</th><th>Due</th><th class="text-end">Actions</th></tr></thead>
+        <tbody>
+            {% for c in challans %}
+            <tr>
+                <td><strong>{{ c.challan_no }}</strong></td>
+                <td><a href="{% url 'students:student_detail' c.student_id %}">{{ c.student.full_name }}</a></td>
+                <td>{{ c.student.class_section_display }}</td>
+                <td>{{ c.month|default:"—" }}</td>
+                <td>{{ currency_symbol }}{{ c.total_payable|floatformat:0|intcomma }}</td>
+                <td class="text-success">{{ currency_symbol }}{{ c.total_paid|floatformat:0|intcomma }}</td>
+                <td class="text-danger fw-600">{{ currency_symbol }}{{ c.balance|floatformat:0|intcomma }}</td>
+                <td><span class="badge badge-status badge-{{ c.status }}">{{ c.get_status_display }}</span></td>
+                <td>{{ c.due_date|date:"M d, Y"|default:"—" }}</td>
+                <td class="text-end">
+                    <a href="{% url 'fees:payment_confirm' c.pk %}" class="btn btn-sm btn-success"><i class="bi bi-credit-card me-1"></i>Collect</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state"><i class="bi bi-check-circle"></i><p>No defaulters — all fees are paid!</p></div>
+    {% endif %}
+</div></div>
+{% endblock %}

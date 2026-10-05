@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 fw-bold mb-0">Challan {{ challan.challan_no }}</h1>
+    <div>
+        <a href="{% url 'fees:challan_print' challan.pk %}" class="btn btn-outline-primary btn-sm" target="_blank"><i class="bi bi-printer me-1"></i>Print</a>
+        <a href="{% url 'fees:challan_pdf' challan.pk %}" class="btn btn-outline-danger btn-sm" target="_blank"><i class="bi bi-file-pdf me-1"></i>PDF</a>
+        {% if challan.status != 'paid' and perms.fees.add_feepayment %}
+        <a href="{% url 'fees:payment_confirm' challan.pk %}" class="btn btn-success btn-sm"><i class="bi bi-credit-card me-1"></i>Record Payment</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-8">
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-receipt me-2"></i>Challan Details</span>
+                {% if challan.status == 'paid' %}<span class="paid-stamp">PAID</span>{% else %}
+                <span class="badge badge-status badge-{{ challan.status }}">{{ challan.get_status_display }}</span>{% endif %}
+            </div>
+            <div class="card-body p-0">
+                <table class="table mb-0">
+                    <tr><th class="w-25">Challan #</th><td>{{ challan.challan_no }}</td></tr>
+                    <tr><th>Student</th><td><a href="{% url 'students:student_detail' challan.student_id %}">{{ challan.student.full_name }}</a></td></tr>
+                    <tr><th>Registration #</th><td>{{ challan.student.registration_no }}</td></tr>
+                    <tr><th>Father Name</th><td>{{ challan.student.father_name|default:"—" }}</td></tr>
+                    <tr><th>Class</th><td>{{ challan.student.class_section_display }}</td></tr>
+                    <tr><th>Academic Year</th><td>{{ challan.academic_year.name }}</td></tr>
+                    <tr><th>Month</th><td>{{ challan.month|default:"—" }}</td></tr>
+                    <tr><th>Issue Date</th><td>{{ challan.issue_date|date:"M d, Y" }}</td></tr>
+                    <tr><th>Due Date</th><td>{{ challan.due_date|date:"M d, Y"|default:"—" }}</td></tr>
+                </table>
+            </div>
+        </div>
+        <div class="card mb-3">
+            <div class="card-header">Fee Items</div>
+            <div class="card-body p-0">
+                <table class="table mb-0">
+                    <thead><tr><th>Fee Type</th><th>Description</th><th class="text-end">Amount</th><th class="text-end">Discount</th></tr></thead>
+                    <tbody>
+                        {% for item in items %}
+                        <tr><td>{{ item.fee_type.name }}</td><td>{{ item.description|default:"—" }}</td><td class="text-end">{{ currency_symbol }}{{ item.amount|floatformat:0|intcomma }}</td><td class="text-end">{{ currency_symbol }}{{ item.discount|floatformat:0 }}</td></tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr><th colspan="2" class="text-end">Total Amount</th><th class="text-end">{{ currency_symbol }}{{ challan.total_amount|floatformat:0|intcomma }}</th><th></th></tr>
+                        <tr><th colspan="2" class="text-end">Late Fee</th><th class="text-end">{{ currency_symbol }}{{ challan.late_fee|floatformat:0 }}</th><th></th></tr>
+                        <tr><th colspan="2" class="text-end">Discount</th><th class="text-end">- {{ currency_symbol }}{{ challan.discount|floatformat:0 }}</th><th></th></tr>
+                        <tr class="table-active"><th colspan="2" class="text-end">Total Payable</th><th class="text-end">{{ currency_symbol }}{{ challan.total_payable|floatformat:0|intcomma }}</th><th></th></tr>
+                        <tr><th colspan="2" class="text-end">Total Paid</th><th class="text-end text-success">{{ currency_symbol }}{{ challan.total_paid|floatformat:0|intcomma }}</th><th></th></tr>
+                        <tr><th colspan="2" class="text-end">Balance</th><th class="text-end text-danger">{{ currency_symbol }}{{ challan.balance|floatformat:0|intcomma }}</th><th></th></tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+        {% if payments %}
+        <div class="card">
+            <div class="card-header">Payment History</div>
+            <div class="card-body p-0">
+                <table class="table mb-0">
+                    <thead><tr><th>Receipt #</th><th>Date</th><th>Method</th><th>Recorded By</th><th class="text-end">Amount</th><th class="text-end">Receipt</th></tr></thead>
+                    <tbody>
+                        {% for p in payments %}
+                        <tr>
+                            <td><strong>{{ p.receipt_no }}</strong></td>
+                            <td>{{ p.payment_date|date:"M d, Y" }}</td>
+                            <td>{{ p.get_method_display }}</td>
+                            <td>{{ p.recorded_by|default:"—" }}</td>
+                            <td class="text-end text-success">{{ currency_symbol }}{{ p.amount|floatformat:0|intcomma }}</td>
+                            <td class="text-end"><a href="{% url 'fees:receipt_pdf' p.pk %}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-file-pdf"></i></a></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">Quick Actions</div>
+            <div class="card-body">
+                {% if challan.status != 'paid' %}
+                <form method="post" action="{% url 'fees:online_pay' challan.pk %}" class="mb-2">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-primary w-100 mb-2">
+                        <i class="bi bi-credit-card-2-front me-1"></i>Pay Online (Card / Bank)
+                    </button>
+                </form>
+                <p class="small text-muted-2 text-center mb-3">
+                    <i class="bi bi-shield-lock me-1"></i>Secured by server-side gateway verification
+                </p>
+                {% if perms.fees.add_feepayment %}
+                <a href="{% url 'fees:payment_confirm' challan.pk %}" class="btn btn-success w-100 mb-2"><i class="bi bi-credit-card me-1"></i>Record Cash Payment</a>
+                {% endif %}
+                {% endif %}
+                <a href="{% url 'fees:challan_print' challan.pk %}" class="btn btn-outline-primary w-100 mb-2" target="_blank"><i class="bi bi-printer me-1"></i>Print Challan</a>
+                <a href="{% url 'fees:challan_pdf' challan.pk %}" class="btn btn-outline-danger w-100 mb-2" target="_blank"><i class="bi bi-file-pdf me-1"></i>Download PDF</a>
+                <hr>
+                <p class="small text-muted-2"><strong>Status:</strong> <span class="badge badge-status badge-{{ challan.status }}">{{ challan.get_status_display }}</span></p>
+                <p class="small text-muted-2"><strong>Balance Due:</strong> {{ currency_symbol }}{{ challan.balance|floatformat:0|intcomma }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
