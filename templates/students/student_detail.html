@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 fw-bold mb-0">{{ student.full_name }}</h1>
+    <div>
+        {% if perms.students.change_student %}
+        <a href="{% url 'students:student_edit' student.pk %}" class="btn btn-outline-primary btn-sm"><i class="bi bi-pencil me-1"></i>Edit</a>
+        {% endif %}
+        {% if student.user %}
+        <a href="{% url 'portal:student_home' %}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-mortarboard me-1"></i>Portal</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <div class="avatar-sm mx-auto mb-3" style="width:80px;height:80px;font-size:2rem">{{ student.full_name|slice:":1"|upper }}</div>
+                <h2 class="h5 mb-1">{{ student.full_name }}</h2>
+                <p class="text-muted-2 small mb-2">{{ student.registration_no }}</p>
+                <span class="badge badge-status {% if student.status == 'active' %}badge-paid{% else %}badge-draft{% endif %}">{{ student.get_status_display }}</span>
+                <hr>
+                <p class="small mb-1"><strong>Class:</strong> {{ student.class_section_display }}</p>
+                <p class="small mb-1"><strong>Admission:</strong> {{ student.admission_date|date:"M d, Y"|default:"—" }}</p>
+                <p class="small mb-0"><strong>Phone:</strong> {{ student.contact_phone|default:"—" }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <div class="card mb-3">
+            <div class="card-header">Personal Information</div>
+            <div class="card-body p-0">
+                <table class="table mb-0">
+                    <tr><th class="w-25">Father Name</th><td>{{ student.father_name|default:"—" }}</td></tr>
+                    <tr><th>Mother Name</th><td>{{ student.mother_name|default:"—" }}</td></tr>
+                    <tr><th>Date of Birth</th><td>{{ student.date_of_birth|date:"M d, Y"|default:"—" }}</td></tr>
+                    <tr><th>Gender</th><td>{{ student.get_gender_display|default:"—" }}</td></tr>
+                    <tr><th>CNIC/B-Form</th><td>{{ student.cnic_or_bform|default:"—" }}</td></tr>
+                    <tr><th>Email</th><td>{{ student.email|default:"—" }}</td></tr>
+                    <tr><th>Address</th><td>{{ student.address|default:"—" }}</td></tr>
+                </table>
+            </div>
+        </div>
+        {% if student.parent %}
+        <div class="card mb-3">
+            <div class="card-header">Parent / Guardian</div>
+            <div class="card-body p-0">
+                <table class="table mb-0">
+                    <tr><th class="w-25">Name</th><td>{{ student.parent.full_name }}</td></tr>
+                    <tr><th>Relation</th><td>{{ student.parent.get_relation_display }}</td></tr>
+                    <tr><th>Phone</th><td>{{ student.parent.phone|default:"—" }}</td></tr>
+                    <tr><th>Occupation</th><td>{{ student.parent.occupation|default:"—" }}</td></tr>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+        <div class="card">
+            <div class="card-header">Enrollment History</div>
+            <div class="card-body p-0">
+                {% if enrollments %}
+                <table class="table mb-0">
+                    <thead><tr><th>Academic Year</th><th>Class</th><th>Roll No</th><th>Promotion</th></tr></thead>
+                    <tbody>
+                        {% for e in enrollments %}
+                        <tr>
+                            <td>{{ e.academic_year.name }}</td>
+                            <td>{{ e.school_class.name }}{% if e.section %}-{{ e.section.name }}{% endif %}</td>
+                            <td>{{ e.roll_no|default:"—" }}</td>
+                            <td>{{ e.get_promotion_status_display|default:"—" }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="empty-state"><i class="bi bi-inbox"></i></div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
