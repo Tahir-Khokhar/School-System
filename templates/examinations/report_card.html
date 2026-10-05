@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container" style="max-width: 800px;">
+<div class="card"><div class="card-header text-center bg-primary text-white py-4"><h2 class="h4 mb-0">{{ school_name|default:"School ERP" }}</h2><p class="small mb-0">Academic Report Card</p></div>
+<div class="card-body"><div class="row mb-4"><div class="col-6"><p class="mb-0"><strong>Student:</strong> {{ student.full_name }}</p><p class="mb-0"><strong>Registration:</strong> {{ student.registration_no }}</p><p class="mb-0"><strong>Father:</strong> {{ student.father_name|default:"—" }}</p></div><div class="col-6 text-end"><p class="mb-0"><strong>Class:</strong> {{ student.class_section_display }}</p><p class="mb-0"><strong>Year:</strong> {{ result.academic_year.name }}</p><p class="mb-0"><strong>Term:</strong> {{ result.get_term_display }}</p></div></div>
+<table class="table table-bordered"><tr class="table-active"><th>Total Marks</th><th>Obtained</th><th>Percentage</th><th>Grade</th><th>Rank</th></tr><tr class="text-center"><td>{{ result.total_marks|floatformat:0 }}</td><td>{{ result.obtained_marks|floatformat:2 }}</td><td>{{ result.percentage|floatformat:2 }}%</td><td><strong>{{ result.grade }}</strong></td><td>{{ result.rank|default:"—" }}</td></tr></table>
+{% if result.teacher_remarks %}<div class="mt-3"><strong>Teacher Remarks:</strong><p>{{ result.teacher_remarks|linebreaksbr }}</p></div>{% endif %}{% if result.principal_remarks %}<div class="mt-3"><strong>Principal Remarks:</strong><p>{{ result.principal_remarks|linebreaksbr }}</p></div>{% endif %}
+<p class="small text-muted-2 mt-4">This report card is computer-generated and does not require a physical signature.</p>
+</div></div></div>
+{% endblock %}
