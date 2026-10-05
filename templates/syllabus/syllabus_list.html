@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+<h1 class="h3 fw-bold mb-0">Syllabus</h1>
+{% if perms.syllabus.add_syllabus %}<a href="{% url 'syllabus:syllabus_create' %}" class="btn btn-primary"><i class="bi bi-plus me-1"></i>New Syllabus</a>{% endif %}
+</div>
+<div class="card"><div class="card-body p-0">{% if syllabi %}<table class="table table-hover mb-0"><thead><tr><th>Class</th><th>Subject</th><th>Term</th><th>Year</th><th class="text-end">View</th></tr></thead><tbody>{% for s in syllabi %}<tr><td>{{ s.school_class.name }}</td><td>{{ s.subject.name }}</td><td>{{ s.get_term_display }}</td><td>{{ s.academic_year.name }}</td><td class="text-end"><a href="{% url 'syllabus:syllabus_detail' s.pk %}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a></td></tr>{% endfor %}</tbody></table>{% else %}<div class="empty-state"><i class="bi bi-list-task"></i></div>{% endif %}</div></div>
+{% endblock %}
