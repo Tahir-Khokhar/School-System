@@ -1,0 +1,27 @@
+# Django
+Django==4.2.30
+psycopg2-binary==2.9.13
+django-crispy-forms==2.5
+crispy-bootstrap5==2026.3
+
+# PDF generation
+WeasyPrint==68.0
+reportlab==4.4.9
+Pillow==11.3.0
+
+# Date utilities
+python-dateutil==2.8.2
+
+# Security: Rate limiting + 2FA + CSP
+django-ratelimit==4.1.0
+django-otp==1.5.0
+django-two-factor-auth==1.18.1
+phonenumbers==8.13.49
+django-csp==3.7
+
+# Payment gateway (Stripe)
+stripe==11.1.0
+qrcode==7.4.2
+
+# Excel export
+openpyxl==3.1.5

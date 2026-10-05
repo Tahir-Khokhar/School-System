@@ -1,0 +1,432 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load crispy_forms_tags %}
+{% block title %}{{ school_name|default:"Army Public School Lahore" }} — Sign in to MyAPS{% endblock %}
+
+{% block auth_content %}
+<style>
+  /* APS green theme — same as the Bahawalpur voucher style */
+  :root {
+    --aps-green: #1b5e20;
+    --aps-green-dark: #0d3d12;
+    --aps-gold: #d4af37;
+    --aps-light: #f5fbf5;
+  }
+  html, body { background: var(--aps-light); }
+  [data-bs-theme="dark"] body { background: #0a1f0d; color: #e8f5e9; }
+
+  .aps-login-wrapper {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+    background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 50%, #a5d6a7 100%);
+  }
+  [data-bs-theme="dark"] .aps-login-wrapper {
+    background: linear-gradient(135deg, #0a1f0d 0%, #1b5e20 100%);
+  }
+
+  /* School header — crest + name */
+  .aps-school-header {
+    text-align: center;
+    margin-bottom: 1.75rem;
+  }
+  .aps-crest {
+    width: 84px; height: 84px;
+    background: linear-gradient(135deg, var(--aps-green), var(--aps-green-dark));
+    border-radius: 50%;
+    border: 3px solid var(--aps-gold);
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--aps-gold);
+    font-size: 2.2rem;
+    box-shadow: 0 6px 16px rgba(27, 94, 32, .3);
+    margin-bottom: 1rem;
+  }
+  .aps-crest .bi-book { font-size: 2rem; }
+  .aps-school-name {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.7rem;
+    font-weight: 800;
+    color: var(--aps-green);
+    line-height: 1.1;
+  }
+  [data-bs-theme="dark"] .aps-school-name { color: #81c784; }
+  .aps-school-motto {
+    font-style: italic;
+    color: var(--aps-gold);
+    font-size: .95rem;
+    margin-top: .35rem;
+    letter-spacing: .5px;
+  }
+  .aps-school-loc {
+    color: #6c757d;
+    font-size: .8rem;
+    margin-top: .15rem;
+  }
+
+  /* Login card */
+  .aps-login-card {
+    background: #fff;
+    border-radius: 14px;
+    box-shadow: 0 16px 40px rgba(13, 61, 18, .15);
+    overflow: hidden;
+    width: 100%;
+    max-width: 440px;
+    border: 1px solid #e8f5e9;
+  }
+  [data-bs-theme="dark"] .aps-login-card {
+    background: #1a2e1c;
+    border-color: #2a4a2c;
+  }
+  .aps-login-card-header {
+    background: var(--aps-green);
+    color: #fff;
+    padding: 1.25rem 1.5rem;
+    text-align: center;
+  }
+  .aps-login-card-header h2 {
+    font-size: 1.3rem;
+    margin: 0;
+    font-weight: 600;
+  }
+  .aps-login-card-header .sub {
+    font-size: .8rem;
+    opacity: .85;
+    margin-top: .25rem;
+  }
+  .aps-login-card-body {
+    padding: 1.5rem;
+  }
+  .aps-login-card-footer {
+    padding: 1rem 1.5rem 1.5rem;
+    text-align: center;
+  }
+
+  /* Form controls — green theme */
+  .aps-login-card .form-control {
+    border: 1.5px solid #c8e6c9;
+    padding: .65rem .85rem;
+    border-radius: 8px;
+    font-size: .95rem;
+    transition: all .15s ease;
+  }
+  .aps-login-card .form-control:focus {
+    border-color: var(--aps-green);
+    box-shadow: 0 0 0 .2rem rgba(27, 94, 32, .15);
+  }
+  .aps-login-card .form-label {
+    font-size: .85rem;
+    color: #1b5e20;
+    font-weight: 600;
+    margin-bottom: .35rem;
+  }
+  .aps-login-card .form-text a {
+    color: var(--aps-green);
+    text-decoration: none;
+    font-size: .8rem;
+  }
+  .aps-login-card .form-text a:hover {
+    text-decoration: underline;
+  }
+
+  /* Stay signed in */
+  .form-check-input:checked {
+    background-color: var(--aps-green);
+    border-color: var(--aps-green);
+  }
+
+  /* Green login button */
+  .btn-aps-green {
+    background: var(--aps-green);
+    border-color: var(--aps-green);
+    color: #fff;
+    font-weight: 600;
+    padding: .7rem 1rem;
+    border-radius: 8px;
+    transition: all .15s ease;
+  }
+  .btn-aps-green:hover {
+    background: var(--aps-green-dark);
+    border-color: var(--aps-green-dark);
+  }
+
+  /* Google button — white with red/green/yellow/blue G logo */
+  .btn-google {
+    background: #fff;
+    color: #424242;
+    border: 1.5px solid #dadce0;
+    padding: .7rem 1rem;
+    border-radius: 8px;
+    font-weight: 500;
+    transition: all .15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+  .btn-google:hover {
+    background: #f8f9fa;
+    box-shadow: 0 1px 4px rgba(0,0,0,.1);
+  }
+  .btn-google svg { width: 18px; height: 18px; }
+
+  /* Demo logins strip */
+  .aps-demo-strip {
+    background: rgba(212, 175, 55, .12);
+    border: 1px dashed var(--aps-gold);
+    border-radius: 8px;
+    padding: .75rem 1rem;
+    margin-top: 1rem;
+    font-size: .8rem;
+    color: #4e6e50;
+  }
+  .aps-demo-strip code { color: var(--aps-green); font-weight: 600; }
+  .aps-demo-strip .aps-demo-title {
+    color: var(--aps-green-dark);
+    font-weight: 600;
+    display: block;
+    margin-bottom: .25rem;
+  }
+
+  /* Tabs for selecting portal type */
+  .aps-portal-tabs {
+    display: flex;
+    background: #f1f8e9;
+    border-radius: 8px;
+    padding: 4px;
+    margin-bottom: 1.25rem;
+  }
+  .aps-portal-tab {
+    flex: 1;
+    text-align: center;
+    padding: .5rem;
+    border-radius: 6px;
+    color: #1b5e20;
+    font-size: .85rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all .15s ease;
+    cursor: pointer;
+  }
+  .aps-portal-tab.active {
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    color: var(--aps-green);
+  }
+
+  /* Forgot password / signup links */
+  .aps-divider {
+    display: flex;
+    align-items: center;
+    margin: 1.25rem 0;
+    color: #9e9e9e;
+    font-size: .8rem;
+  }
+  .aps-divider::before, .aps-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #e0e0e0;
+  }
+  .aps-divider span { padding: 0 12px; }
+
+  .aps-signup-link {
+    color: #6c757d;
+    font-size: .85rem;
+  }
+  .aps-signup-link a {
+    color: var(--aps-green);
+    text-decoration: none;
+    font-weight: 600;
+  }
+  .aps-signup-link a:hover { text-decoration: underline; }
+
+  /* Footer */
+  .aps-login-footer {
+    margin-top: 1.5rem;
+    text-align: center;
+    color: #4e6e50;
+    font-size: .75rem;
+  }
+  .aps-login-footer a { color: var(--aps-green); text-decoration: none; }
+  .aps-login-footer a:hover { text-decoration: underline; }
+  .aps-login-footer .sep { color: #9e9e9e; margin: 0 8px; }
+
+  /* Hide fields not relevant to two_factor wizard auth step */
+  .aps-login-card .invalid-feedback { font-size: .8rem; }
+
+  @media (max-width: 480px) {
+    .aps-school-name { font-size: 1.4rem; }
+    .aps-login-card-body { padding: 1.25rem; }
+  }
+</style>
+
+<div class="aps-login-wrapper">
+  <!-- School header (crest + name) -->
+  <div class="aps-school-header">
+    <div class="aps-crest">
+      <i class="bi bi-book"></i>
+    </div>
+    <div class="aps-school-name">{{ school_name|default:"Army Public School Lahore" }}</div>
+    <div class="aps-school-motto">"{{ school_tagline|default:"I shall rise and shine" }}"</div>
+    <div class="aps-school-loc">{{ school_address|default:"Tufail Road, Lahore Cantt, Lahore, Pakistan" }}</div>
+  </div>
+
+  <!-- Login card -->
+  <div class="aps-login-card">
+    <div class="aps-login-card-header">
+      <h2>Sign in to MyAPS account</h2>
+      <div class="sub">Enter your credentials to access your portal</div>
+    </div>
+
+    <!-- Portal selector tabs -->
+    <div class="aps-login-card-body">
+      <div class="aps-portal-tabs">
+        <a href="{% url 'login' %}?next={% if request.GET.next %}{{ request.GET.next }}{% else %}/portal/student/{% endif %}" class="aps-portal-tab active" data-portal="student">
+          <i class="bi bi-mortarboard me-1"></i> Student
+        </a>
+        <a href="{% url 'login' %}?next=/portal/teacher/" class="aps-portal-tab" data-portal="teacher">
+          <i class="bi bi-person-badge me-1"></i> Teacher
+        </a>
+        <a href="{% url 'login' %}?next=/portal/parent/" class="aps-portal-tab" data-portal="parent">
+          <i class="bi bi-people me-1"></i> Parent
+        </a>
+      </div>
+
+      <form method="post">
+        {{ wizard.management_form }}
+        {% csrf_token %}
+
+        {% if wizard.steps.current == "auth" %}
+        <!-- Username/password step -->
+        <div class="mb-3">
+          <label class="form-label" for="id_auth-username">Username</label>
+          <input type="text" name="auth-username" id="id_auth-username"
+                 class="form-control"
+                 autocomplete="username"
+                 autofocus
+                 placeholder="Enter your username"
+                 required>
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label" for="id_auth-password">Password</label>
+          <div class="input-group">
+            <input type="password" name="auth-password" id="id_auth-password"
+                   class="form-control"
+                   autocomplete="current-password"
+                   placeholder="Enter your password"
+                   required>
+            <button type="button" class="btn btn-outline-secondary" id="togglePw" tabindex="-1">
+              <i class="bi bi-eye"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div class="form-check">
+            <input type="checkbox" class="form-check-input" name="two_factor_view-remember" id="id_remember">
+            <label class="form-check-label small" for="id_remember">Stay signed in</label>
+          </div>
+          <div class="form-text">
+            <a href="{% url 'password_reset' %}">Forgot password?</a>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-aps-green w-100 btn-lg">
+          <i class="bi bi-box-arrow-in-right me-2"></i>Sign In
+        </button>
+
+        <div class="aps-divider"><span>or</span></div>
+
+        <a href="{% url 'google_login_start' %}" class="btn btn-google w-100 btn-lg">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z"/>
+          </svg>
+          <span>Login with Google</span>
+        </a>
+
+        {% elif wizard.steps.current == "token" %}
+        <!-- 2FA TOTP token step -->
+        <div class="text-center mb-3">
+          <i class="bi bi-shield-lock text-success" style="font-size: 2rem;"></i>
+          <h4 class="mt-2 mb-1">Two-Factor Verification</h4>
+          <p class="text-muted small mb-0">Enter the 6-digit code from your authenticator app (Google Authenticator, Authy).</p>
+        </div>
+        {% for field in wizard.form %}
+        <div class="mb-3">{{ field|as_crispy_field }}</div>
+        {% endfor %}
+        <button type="submit" class="btn btn-aps-green w-100 btn-lg">
+          <i class="bi bi-check-lg me-2"></i>Verify
+        </button>
+        {% else %}
+        {{ wizard.form|crispy }}
+        <button type="submit" class="btn btn-aps-green w-100 btn-lg mt-2">Continue</button>
+        {% endif %}
+      </form>
+    </div>
+
+    <!-- Demo accounts strip -->
+    <div class="aps-login-card-footer">
+      <div class="aps-demo-strip">
+        <span class="aps-demo-title"><i class="bi bi-info-circle me-1"></i>Demo accounts (password: <code>admin123</code>)</span>
+        <div class="row g-1 text-start">
+          <div class="col-6"><code>student1</code> <span class="text-muted">→ Student portal</span></div>
+          <div class="col-6"><code>teacher1</code> <span class="text-muted">→ Teacher portal</span></div>
+          <div class="col-6"><code>parent1</code> <span class="text-muted">→ Parent portal</span></div>
+          <div class="col-6"><code>superadmin</code> <span class="text-muted">→ Full access</span></div>
+        </div>
+      </div>
+      <div class="aps-signup-link mt-3">
+        Don't have an account? <a href="#">Contact school administration</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="aps-login-footer">
+    © {% now "Y" %} {{ school_name|default:"Army Public School Lahore" }}
+    <span class="sep">·</span>
+    <a href="#">Privacy Policy</a>
+    <span class="sep">·</span>
+    <a href="#">Terms</a>
+    <span class="sep">·</span>
+    <a href="#">Support</a>
+  </div>
+</div>
+
+<script>
+  // Toggle password visibility
+  document.getElementById('togglePw').addEventListener('click', function() {
+    var pw = document.getElementById('id_auth-password');
+    var icon = this.querySelector('i');
+    if (pw.type === 'password') {
+      pw.type = 'text';
+      icon.classList.remove('bi-eye');
+      icon.classList.add('bi-eye-slash');
+    } else {
+      pw.type = 'password';
+      icon.classList.remove('bi-eye-slash');
+      icon.classList.add('bi-eye');
+    }
+  });
+
+  // Auto-set portal tab active based on ?next= param
+  (function() {
+    var next = new URLSearchParams(window.location.search).get('next') || '';
+    var tabs = document.querySelectorAll('.aps-portal-tab');
+    tabs.forEach(function(t) {
+      var portal = t.getAttribute('data-portal');
+      if (next.indexOf(portal) !== -1) {
+        tabs.forEach(function(x) { x.classList.remove('active'); });
+        t.classList.add('active');
+      }
+    });
+  })();
+</script>
+{% endblock %}

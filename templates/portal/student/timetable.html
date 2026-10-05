@@ -1,0 +1,11 @@
+{% extends "portal/portal_base.html" %}
+{% block sidebar_links %}{% include "portal/student/sidebar.html" %}{% endblock %}
+{% block portal_content %}
+<h2 class="h4 fw-bold mb-3" style="color:var(--aps-green);"><i class="bi bi-calendar-week me-2"></i>Timetable</h2>
+<div class="card"><div class="card-body">
+  {% block page_data %}{% endblock %}
+  {% block empty_fallback %}
+  <div class="empty-state"><i class="bi bi-info-circle"></i><p>Timetable has not been published yet. Please check back soon.</p></div>
+  {% endblock %}
+</div></div>
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends "portal/portal_base.html" %}
+{% load humanize %}
+{% block sidebar_links %}{% include "portal/student/sidebar.html" %}{% endblock %}
+{% block portal_content %}
+<h2 class="h4 fw-bold mb-3" style="color:var(--aps-green);"><i class="bi bi-award me-2"></i>My Results</h2>
+<div class="card mb-3"><div class="card-header">Class Test Results</div><div class="card-body p-0">
+  {% if test_results %}
+  <table class="table table-hover mb-0">
+    <thead><tr><th>Test</th><th>Subject</th><th>Date</th><th>Obtained</th><th>Total</th><th>%</th><th>Grade</th></tr></thead>
+    <tbody>
+      {% for r in test_results %}
+      <tr>
+        <td>{{ r.test.title }}</td>
+        <td>{{ r.test.subject.name|default:"—" }}</td>
+        <td>{{ r.test.date|date:"M d, Y" }}</td>
+        <td>{{ r.obtained_marks|floatformat:0 }}</td>
+        <td>{{ r.test.total_marks|floatformat:0 }}</td>
+        <td>{{ r.percentage }}%</td>
+        <td><span class="badge bg-soft-primary">{{ r.grade }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state"><i class="bi bi-clipboard"></i><p>Your result has not been published yet.</p></div>
+  {% endif %}
+</div></div>
+<div class="card"><div class="card-header">Term Results</div><div class="card-body p-0">
+  {% if term_results %}
+  <table class="table table-hover mb-0">
+    <thead><tr><th>Academic Year</th><th>Term</th><th>Percentage</th><th>Grade</th><th>Rank</th><th class="text-end">Report Card</th></tr></thead>
+    <tbody>
+      {% for tr in term_results %}
+      <tr>
+        <td>{{ tr.academic_year.name }}</td>
+        <td>{{ tr.get_term_display }}</td>
+        <td>{{ tr.percentage|floatformat:2 }}%</td>
+        <td><span class="badge bg-soft-primary">{{ tr.grade }}</span></td>
+        <td>{{ tr.rank|default:"—" }}</td>
+        <td class="text-end"><a href="{% url 'portal:student_report_card' tr.pk %}" class="btn btn-sm btn-outline-success"><i class="bi bi-file-earmark-pdf me-1"></i>View Report Card</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state"><i class="bi bi-clipboard"></i><p>No term results published yet.</p></div>
+  {% endif %}
+</div></div>
+{% endblock %}

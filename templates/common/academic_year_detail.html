@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="h3 fw-bold mb-3">{{ year.name }} {% if year.is_active %}<span class="badge bg-soft-success">Active</span>{% else %}<span class="badge badge-draft">Archived</span>{% endif %}</h1>
+<div class="card"><div class="card-body p-0">
+<table class="table mb-0">
+<tr><th class="w-25">Name</th><td>{{ year.name }}</td></tr>
+<tr><th>Start Date</th><td>{{ year.start_date|date:"M d, Y" }}</td></tr>
+<tr><th>End Date</th><td>{{ year.end_date|date:"M d, Y" }}</td></tr>
+<tr><th>Status</th><td>{% if year.is_active %}<span class="badge bg-soft-success">Active</span>{% else %}<span class="badge badge-draft">Archived</span>{% endif %}</td></tr>
+</table>
+</div></div>
+<div class="mt-3">
+{% if not year.is_active %}
+<form method="post" action="{% url 'common:academic_year_activate' year.pk %}">{% csrf_token %}<button class="btn btn-primary"><i class="bi bi-check-circle me-1"></i>Make Active</button></form>
+{% endif %}
+<a href="{% url 'common:academic_year_list' %}" class="btn btn-outline-secondary">Back</a>
+</div>
+{% endblock %}

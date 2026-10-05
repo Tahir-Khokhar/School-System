@@ -1,0 +1,66 @@
+<aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+        <a href="{% url 'dashboard:home' %}" class="brand">
+            <span class="brand-logo"><i class="bi bi-mortarboard-fill"></i></span>
+            <div class="brand-text">
+                <div class="brand-name">{{ school_name|default:"School ERP" }}</div>
+                <div class="brand-sub">School ERP</div>
+            </div>
+        </a>
+        <button class="btn btn-sm d-md-none position-absolute top-0 end-0 mt-2 me-2 text-light"
+                onclick="document.getElementById('main-wrapper').classList.remove('sidebar-open')">
+            <i class="bi bi-x-lg"></i>
+        </button>
+    </div>
+
+    <nav class="sidebar-nav">
+        {% if perms.common.view_dashboard or user.is_superuser %}
+            <a href="{% url 'dashboard:home' %}" class="nav-link" data-section="dashboard">
+                <i class="bi bi-grid-1x2"></i><span>Dashboard</span>
+            </a>
+        {% endif %}
+
+        <div class="nav-section">Academic</div>
+        <a href="{% url 'common:academic_year_list' %}" class="nav-link"><i class="bi bi-calendar3"></i><span>Academic Years</span></a>
+        <a href="{% url 'common:class_list' %}" class="nav-link"><i class="bi bi-easel"></i><span>Classes & Sections</span></a>
+        <a href="{% url 'common:subject_list' %}" class="nav-link"><i class="bi bi-journal-bookmark"></i><span>Subjects</span></a>
+
+        <div class="nav-section">People</div>
+        <a href="{% url 'students:student_list' %}" class="nav-link"><i class="bi bi-mortarboard"></i><span>Students</span></a>
+        <a href="{% url 'teachers:teacher_list' %}" class="nav-link"><i class="bi bi-person-badge"></i><span>Teachers</span></a>
+        <a href="{% url 'parents:parent_list' %}" class="nav-link"><i class="bi bi-people"></i><span>Parents</span></a>
+        <a href="{% url 'admissions:application_list' %}" class="nav-link"><i class="bi bi-person-plus"></i><span>Admissions</span></a>
+
+        <div class="nav-section">Daily Operations</div>
+        <a href="{% url 'attendance:daily_mark' %}" class="nav-link"><i class="bi bi-check2-square"></i><span>Mark Attendance</span></a>
+        <a href="{% url 'attendance:report' %}" class="nav-link"><i class="bi bi-clipboard-data"></i><span>Attendance Report</span></a>
+        <a href="{% url 'diary:entry_list' %}" class="nav-link"><i class="bi bi-journal-text"></i><span>Daily Diary</span></a>
+        <a href="{% url 'homework:homework_list' %}" class="nav-link"><i class="bi bi-pencil-square"></i><span>Homework</span></a>
+        <a href="{% url 'syllabus:syllabus_list' %}" class="nav-link"><i class="bi bi-list-task"></i><span>Syllabus</span></a>
+
+        <div class="nav-section">Examinations</div>
+        <a href="{% url 'examinations:exam_list' %}" class="nav-link"><i class="bi bi-journal-medical"></i><span>Term Exams</span></a>
+        <a href="{% url 'examinations:classtest_list' %}" class="nav-link"><i class="bi bi-card-checklist"></i><span>Class Tests</span></a>
+        <a href="{% url 'examinations:surprisetest_list' %}" class="nav-link"><i class="bi bi-lightning"></i><span>Surprise Tests</span></a>
+        <a href="{% url 'datesheets:datesheet_list' %}" class="nav-link"><i class="bi bi-calendar-week"></i><span>Date Sheets</span></a>
+        <a href="{% url 'examinations:termresult_list' %}" class="nav-link"><i class="bi bi-award"></i><span>Term Results</span></a>
+
+        <div class="nav-section">Finance</div>
+        <a href="{% url 'fees:challan_list' %}" class="nav-link"><i class="bi bi-receipt"></i><span>Fee Challans</span></a>
+        <a href="{% url 'fees:payment_create' %}" class="nav-link"><i class="bi bi-credit-card"></i><span>Record Payment</span></a>
+        <a href="{% url 'fees:defaulter_report' %}" class="nav-link"><i class="bi bi-exclamation-triangle"></i><span>Defaulters</span></a>
+        <a href="{% url 'payroll:payroll_list' %}" class="nav-link"><i class="bi bi-cash-coin"></i><span>Teacher Payroll</span></a>
+
+        <div class="nav-section">Engagement</div>
+        <a href="{% url 'activities:activity_list' %}" class="nav-link"><i class="bi bi-trophy"></i><span>Activities</span></a>
+        <a href="{% url 'announcements:list' %}" class="nav-link"><i class="bi bi-megaphone"></i><span>Announcements</span></a>
+        <a href="{% url 'school_calendar:event_list' %}" class="nav-link"><i class="bi bi-calendar-event"></i><span>Calendar</span></a>
+
+        <div class="nav-section">System</div>
+        <a href="{% url 'reports:index' %}" class="nav-link"><i class="bi bi-file-earmark-bar-graph"></i><span>Report Center</span></a>
+        <a href="{% url 'audit_logs:log_list' %}" class="nav-link"><i class="bi bi-clock-history"></i><span>Audit Logs</span></a>
+        {% if user.is_superuser %}
+        <a href="{% url 'admin:index' %}" class="nav-link" target="_blank"><i class="bi bi-gear"></i><span>Django Admin</span></a>
+        {% endif %}
+    </nav>
+</aside>

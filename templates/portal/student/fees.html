@@ -1,0 +1,38 @@
+{% extends "portal/portal_base.html" %}
+{% load humanize %}
+{% block sidebar_links %}{% include "portal/student/sidebar.html" %}{% endblock %}
+{% block portal_content %}
+<h2 class="h4 fw-bold mb-3" style="color:var(--aps-green);"><i class="bi bi-receipt me-2"></i>My Fees</h2>
+<div class="row g-3 mb-3">
+  <div class="col-4"><div class="stat-card text-center"><div class="stat-value" style="color:var(--aps-green);">{{ currency_symbol|default:"Rs." }}{{ total_payable|default:0|floatformat:0|intcomma }}</div><div class="stat-label">Total Payable</div></div></div>
+  <div class="col-4"><div class="stat-card text-center"><div class="stat-value text-success">{{ currency_symbol|default:"Rs." }}{{ total_paid|default:0|floatformat:0|intcomma }}</div><div class="stat-label">Total Paid</div></div></div>
+  <div class="col-4"><div class="stat-card text-center"><div class="stat-value text-danger">{{ currency_symbol|default:"Rs." }}{{ total_outstanding|default:0|floatformat:0|intcomma }}</div><div class="stat-label">Outstanding</div></div></div>
+</div>
+<div class="card"><div class="card-body p-0">
+  {% if challans %}
+  <table class="table table-hover mb-0">
+    <thead><tr><th>Challan #</th><th>Month</th><th>Due Date</th><th>Payable</th><th>Paid</th><th>Balance</th><th>Status</th><th class="text-end">Actions</th></tr></thead>
+    <tbody>
+      {% for c in challans %}
+      <tr>
+        <td><strong style="color:var(--aps-green);">{{ c.challan_no }}</strong></td>
+        <td>{{ c.month|default:"—" }}</td>
+        <td>{{ c.due_date|date:"M d, Y"|default:"—" }}</td>
+        <td>{{ currency_symbol|default:"Rs." }}{{ c.total_payable|floatformat:0|intcomma }}</td>
+        <td class="text-success">{{ currency_symbol|default:"Rs." }}{{ c.total_paid|floatformat:0|intcomma }}</td>
+        <td class="{% if c.balance > 0 %}text-danger{% endif %}">{{ currency_symbol|default:"Rs." }}{{ c.balance|floatformat:0|intcomma }}</td>
+        <td><span class="badge badge-status badge-{{ c.status }}">{{ c.get_status_display }}</span></td>
+        <td class="text-end">
+          <a href="{% url 'fees:challan_detail' c.pk %}" class="btn btn-sm btn-outline-success"><i class="bi bi-eye"></i></a>
+          <a href="{% url 'fees:challan_pdf' c.pk %}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-file-pdf"></i></a>
+          {% if c.status != 'paid' %}<a href="{% url 'fees:online_pay' c.pk %}" class="btn btn-sm btn-success" style="background:var(--aps-green);border-color:var(--aps-green);"><i class="bi bi-credit-card me-1"></i>Pay</a>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state"><i class="bi bi-check-circle"></i><p>No outstanding fees are currently available.</p></div>
+  {% endif %}
+</div></div>
+{% endblock %}

@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block content %}
+<style>
+  .portal-sidebar {
+    background: var(--aps-green-dark);
+    min-height: calc(100vh - var(--topbar-height));
+    padding: 0;
+    position: fixed;
+    left: 0; top: var(--topbar-height);
+    width: 220px;
+    overflow-y: auto;
+    z-index: 1000;
+  }
+  .portal-sidebar .sidebar-heading {
+    color: rgba(212,175,55,.5);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 12px 18px 6px;
+    font-weight: 700;
+  }
+  .portal-sidebar a {
+    display: block;
+    color: #c8e6c9;
+    padding: 9px 18px;
+    font-size: 13px;
+    text-decoration: none;
+    border-left: 3px solid transparent;
+    transition: all .15s ease;
+  }
+  .portal-sidebar a:hover {
+    background: rgba(212,175,55,.08);
+    color: var(--aps-gold);
+    border-left-color: var(--aps-gold);
+  }
+  .portal-sidebar a.active {
+    background: rgba(212,175,55,.15);
+    color: var(--aps-gold);
+    border-left-color: var(--aps-gold);
+    font-weight: 600;
+  }
+  .portal-sidebar a i { width: 18px; margin-right: 8px; }
+  .portal-main {
+    margin-left: 220px;
+    padding: 1.5rem;
+  }
+  /* Mobile bottom nav */
+  .portal-bottom-nav {
+    display: none;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: var(--aps-green-dark);
+    padding: 6px;
+    z-index: 1100;
+    justify-content: space-around;
+  }
+  .portal-bottom-nav a {
+    color: #c8e6c9;
+    text-decoration: none;
+    text-align: center;
+    font-size: 10px;
+    flex: 1;
+    padding: 4px 2px;
+  }
+  .portal-bottom-nav a i { font-size: 1.2rem; display: block; }
+  .portal-bottom-nav a.active { color: var(--aps-gold); }
+  @media (max-width: 767.98px) {
+    .portal-sidebar { display: none; }
+    .portal-main { margin-left: 0; padding-bottom: 70px; }
+    .portal-bottom-nav { display: flex; }
+  }
+  /* Empty state */
+  .empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--text-muted);
+  }
+  .empty-state i { font-size: 2.5rem; opacity: .35; display: block; margin-bottom: .5rem; }
+  .empty-state p { font-size: .9rem; margin: 0; }
+  /* Loading spinner */
+  .portal-loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 3rem 0;
+  }
+  .portal-loading .spinner-border {
+    width: 3rem; height: 3rem;
+    color: var(--aps-green);
+  }
+</style>
+
+<div class="portal-sidebar">
+  <div class="sidebar-heading">{{ portal_type|default:"Student" }} Portal</div>
+  {% block sidebar_links %}{% endblock %}
+</div>
+
+<div class="portal-main">
+  {% block portal_content %}{% endblock %}
+</div>
+
+<!-- Mobile bottom nav -->
+<div class="portal-bottom-nav">
+  <a href="{% if portal_type == 'Parent' %}{% url 'portal:parent_home' %}{% else %}{% url 'portal:student_home' %}{% endif %}" class="{% if active_section == 'dashboard' %}active{% endif %}"><i class="bi bi-house"></i>Home</a>
+  <a href="{% if portal_type == 'Parent' %}{% url 'portal:parent_children' %}{% else %}{% url 'portal:student_profile' %}{% endif %}"><i class="bi bi-person"></i>Profile</a>
+  <a href="{% if portal_type == 'Parent' %}{% url 'portal:parent_fees' %}{% else %}{% url 'portal:student_fees' %}{% endif %}"><i class="bi bi-receipt"></i>Fees</a>
+  <a href="{% if portal_type == 'Parent' %}{% url 'portal:parent_results' %}{% else %}{% url 'portal:student_results' %}{% endif %}"><i class="bi bi-award"></i>Results</a>
+  <a href="{% url 'notifications:list' %}" class="{% if active_section == 'notifications' %}active{% endif %}"><i class="bi bi-bell"></i>Alerts</a>
+</div>
+{% endblock %}

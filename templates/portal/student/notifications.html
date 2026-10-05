@@ -1,0 +1,30 @@
+{% extends "portal/portal_base.html" %}
+{% block sidebar_links %}{% include "portal/student/sidebar.html" %}{% endblock %}
+{% block portal_content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="h4 fw-bold mb-0" style="color:var(--aps-green);"><i class="bi bi-bell me-2"></i>Notifications</h2>
+  {% if unread_count %}
+  <form method="post">{% csrf_token %}<input type="hidden" name="action" value="mark_all_read"><button class="btn btn-sm btn-outline-success">Mark All Read</button></form>
+  {% endif %}
+</div>
+<div class="card"><div class="card-body p-0">
+  {% if notifications %}
+  <ul class="list-group list-group-flush">
+    {% for n in notifications %}
+    <li class="list-group-item {% if not n.is_read %}bg-soft-primary{% endif %} d-flex justify-content-between">
+      <div>
+        <div class="fw-bold">{{ n.title }}</div>
+        <div class="small text-muted">{{ n.message|truncatewords:20 }}</div>
+        <div class="small text-muted">{{ n.sent_at|date:"M d, Y H:i" }}</div>
+      </div>
+      {% if not n.is_read %}
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="mark_read"><input type="hidden" name="notif_id" value="{{ n.pk }}"><button class="btn btn-sm btn-link">Mark Read</button></form>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty-state"><i class="bi bi-bell-slash"></i><p>You're all caught up. No new notifications.</p></div>
+  {% endif %}
+</div></div>
+{% endblock %}

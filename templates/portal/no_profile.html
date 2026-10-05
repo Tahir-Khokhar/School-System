@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-5">
+  <div class="row justify-content-center">
+    <div class="col-md-6">
+      <div class="card text-center">
+        <div class="card-body p-5">
+          <div class="display-1 text-warning mb-3"><i class="bi bi-exclamation-triangle"></i></div>
+          <h2 class="h4 mb-3">Profile Not Linked</h2>
+          <p class="text-muted mb-4">Your user account is not linked to a {{ portal_type|default:"Student" }} record. Please contact the school administration to link your account and gain access to the {{ portal_type|default:"Student" }} Portal.</p>
+          <a href="{% url 'logout' %}" class="btn btn-outline-primary"><i class="bi bi-box-arrow-right me-2"></i>Sign out</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

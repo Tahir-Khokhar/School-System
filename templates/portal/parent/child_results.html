@@ -1,0 +1,11 @@
+{% extends "portal/portal_base.html" %}
+{% block sidebar_links %}{% include "portal/parent/sidebar.html" %}{% endblock %}
+{% block portal_content %}
+<h2 class="h4 fw-bold mb-3" style="color:var(--aps-green);"><i class="bi bi-award me-2"></i>Child Results</h2>
+<div class="card"><div class="card-body">
+  {% block page_data %}{% endblock %}
+  {% block empty_fallback %}
+  <div class="empty-state"><i class="bi bi-info-circle"></i><p>No results published yet.</p></div>
+  {% endblock %}
+</div></div>
+{% endblock %}

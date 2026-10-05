@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}Student Dashboard · {{ school_name }}{% endblock %}
+
+{% block content %}
+<style>
+  .portal-sidebar { background: var(--aps-green-dark); min-height: calc(100vh - 60px); padding: 1rem 0; }
+  .portal-sidebar a { display: block; color: #c8e6c9; padding: 10px 18px; font-size: 14px; text-decoration: none; border-left: 3px solid transparent; transition: all .15s ease; }
+  .portal-sidebar a:hover, .portal-sidebar a.active { background: rgba(212,175,55,.12); color: var(--aps-gold); border-left-color: var(--aps-gold); }
+  .portal-sidebar a i { width: 20px; margin-right: 8px; }
+  .portal-sidebar .sidebar-heading { color: rgba(212,175,55,.5); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; padding: 12px 18px 6px; font-weight: 700; }
+</style>
+
+<div class="container-fluid">
+  <div class="row">
+    <!-- Student Portal Sidebar -->
+    <div class="col-md-2 d-none d-md-block portal-sidebar p-0">
+      <div class="sidebar-heading">Student Portal</div>
+      {% include "portal/student/sidebar.html" %}
+    </div>
+
+    <!-- Main content area -->
+    <div class="col-md-10 p-4">
+      {% if student %}
+      <!-- Welcome area -->
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <div class="d-flex align-items-center gap-3">
+          <div class="avatar-sm" style="width:64px;height:64px;font-size:1.8rem;">{{ student.full_name|slice:":1"|upper }}</div>
+          <div>
+            <h1 class="h3 fw-bold mb-0" style="color:var(--aps-green);">Welcome back, {{ student.full_name }}</h1>
+            <p class="text-muted-2 small mb-0">{{ student.registration_no }} · {{ student.class_section_display }} · {{ active_academic_year.name|default:"2026–2027" }}</p>
+          </div>
+        </div>
+        <div>
+          <a href="#" class="btn btn-success btn-sm" style="background:var(--aps-green);border-color:var(--aps-green);"><i class="bi bi-credit-card me-1"></i>Pay Fee</a>
+          <a href="#" class="btn btn-outline-success btn-sm"><i class="bi bi-receipt me-1"></i>View Challan</a>
+        </div>
+      </div>
+
+      <!-- Dashboard cards -->
+      <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+          <div class="stat-card text-center">
+            <div class="stat-icon bg-soft-success mx-auto"><i class="bi bi-check-circle"></i></div>
+            <div class="stat-label mt-2">Attendance</div>
+            <div class="stat-value" style="color:var(--aps-green);">{{ attendance_percentage|default:"94"|floatformat:1 }}%</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-card text-center">
+            <div class="stat-icon bg-soft-warning mx-auto"><i class="bi bi-credit-card"></i></div>
+            <div class="stat-label mt-2">Current Fees</div>
+            <div class="stat-value" style="color:var(--aps-gold-dark);">{{ currency_symbol|default:"Rs." }}{{ student.fee_challans.first.total_payable|default:0|floatformat:0|intcomma }}</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-card text-center">
+            <div class="stat-icon bg-soft-danger mx-auto"><i class="bi bi-exclamation-triangle"></i></div>
+            <div class="stat-label mt-2">Pending Fees</div>
+            <div class="stat-value text-danger">{{ pending_challans|length|default:0 }}</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-card text-center">
+            <div class="stat-icon bg-soft-info mx-auto"><i class="bi bi-journal-medical"></i></div>
+            <div class="stat-label mt-2">Upcoming Exams</div>
+            <div class="stat-value" style="color:var(--aps-green);">{{ upcoming_tests|length|default:0 }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Actions -->
+      <h5 class="mb-3" style="color:var(--aps-green);">Quick Actions</h5>
+      <div class="row g-2 mb-4">
+        <div class="col-6 col-md-3"><a href="#" class="btn btn-outline-success w-100"><i class="bi bi-credit-card me-1"></i>Pay Fee</a></div>
+        <div class="col-6 col-md-3"><a href="#" class="btn btn-outline-success w-100"><i class="bi bi-check2-square me-1"></i>Attendance</a></div>
+        <div class="col-6 col-md-3"><a href="#" class="btn btn-outline-success w-100"><i class="bi bi-award me-1"></i>Result</a></div>
+        <div class="col-6 col-md-3"><a href="#" class="btn btn-outline-success w-100"><i class="bi bi-calendar-week me-1"></i>Timetable</a></div>
+        <div class="col-6 col-md-3"><a href="#" class="btn btn-outline-success w-100"><i class="bi bi-pencil-square me-1"></i>Homework</a></div>
+        <div class="col-6 col-md-3"><a href="#" class="btn btn-outline-success w-100"><i class="bi bi-receipt me-1"></i>Challan</a></div>
+        <div class="col-6 col-md-3"><a href="#" class="btn btn-outline-success w-100"><i class="bi bi-file-earmark-pdf me-1"></i>Receipt</a></div>
+        <div class="col-6 col-md-3"><a href="{% url 'announcements:list' %}" class="btn btn-outline-success w-100"><i class="bi bi-megaphone me-1"></i>Notices</a></div>
+      </div>
+
+      <!-- My Fees section -->
+      <h5 class="mb-3" style="color:var(--aps-green);"><i class="bi bi-receipt me-2"></i>My Fees</h5>
+      <div class="card mb-4">
+        <div class="card-body p-0">
+          {% if pending_challans %}
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr>
+                <th>Challan #</th>
+                <th>Month</th>
+                <th>Due Date</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in pending_challans %}
+              <tr>
+                <td><strong style="color:var(--aps-green);">{{ c.challan_no }}</strong></td>
+                <td>{{ c.month|default:"—" }}</td>
+                <td>{{ c.due_date|date:"M d, Y"|default:"—" }}</td>
+                <td>{{ currency_symbol|default:"Rs." }}{{ c.total_payable|floatformat:0|intcomma }}</td>
+                <td><span class="badge badge-status badge-{{ c.status }}">{{ c.get_status_display }}</span></td>
+                <td class="text-end">
+                  <a href="{% url 'fees:challan_detail' c.pk %}" class="btn btn-sm btn-outline-success"><i class="bi bi-eye"></i></a>
+                  <a href="{% url 'fees:challan_pdf' c.pk %}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-file-pdf"></i></a>
+                  {% if c.status != 'paid' %}
+                  <a href="{% url 'fees:online_pay' c.pk %}" class="btn btn-sm btn-success" style="background:var(--aps-green);border-color:var(--aps-green);"><i class="bi bi-credit-card me-1"></i>Pay</a>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <div class="empty-state"><i class="bi bi-check-circle"></i><p>All fees paid! No pending challans.</p></div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Recent Results + Notifications -->
+      <div class="row g-3">
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header"><i class="bi bi-award me-2"></i>Recent Test Results</div>
+            <div class="card-body p-0">
+              {% if test_results %}
+              <ul class="list-group list-group-flush">
+                {% for r in test_results %}
+                <li class="list-group-item d-flex justify-content-between">
+                  <div><strong>{{ r.test.title }}</strong><br><small class="text-muted">{{ r.test.subject.name|default:"" }} · {{ r.test.date|date:"M d, Y" }}</small></div>
+                  <span class="badge bg-soft-success">{{ r.obtained_marks|floatformat:0 }}/{{ r.test.total_marks|floatformat:0 }}</span>
+                </li>
+                {% endfor %}
+              </ul>
+              {% else %}
+              <div class="empty-state"><i class="bi bi-clipboard"></i><p>No results published yet.</p></div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header"><i class="bi bi-bell me-2"></i>Notifications</div>
+            <div class="card-body p-0">
+              <ul class="list-group list-group-flush">
+                {% if unread_notifications_count %}
+                <li class="list-group-item"><i class="bi bi-bell-fill text-warning me-2"></i>You have {{ unread_notifications_count }} unread notifications.</li>
+                {% else %}
+                <li class="list-group-item text-muted small"><i class="bi bi-bell-slash me-2"></i>No new notifications.</li>
+                {% endif %}
+                <li class="list-group-item"><i class="bi bi-megaphone me-2"></i><a href="{% url 'announcements:list' %}">View all school notices</a></li>
+                <li class="list-group-item"><i class="bi bi-calendar-event me-2"></i><a href="{% url 'school_calendar:event_list' %}">View school calendar</a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {% else %}
+      <div class="alert alert-warning">
+        <h5><i class="bi bi-exclamation-triangle me-2"></i>No student profile linked</h5>
+        <p class="mb-0">Your user account is not linked to a Student record. Please contact the school administration to link your account.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

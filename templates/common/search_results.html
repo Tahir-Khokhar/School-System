@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="h3 fw-bold mb-3"><i class="bi bi-search me-2"></i>Search Results</h1>
+<p class="text-muted-2">Searching for: <strong>{{ q }}</strong></p>
+<div class="row g-3">
+{% if students %}
+<div class="col-md-6"><div class="card"><div class="card-header">Students</div><div class="card-body p-0"><ul class="list-group list-group-flush">{% for s in students %}<li class="list-group-item"><a href="{% url 'students:student_detail' s.pk %}">{{ s.full_name }}</a><br><small class="text-muted-2">{{ s.registration_no }} · {{ s.class_section_display }}</small></li>{% endfor %}</ul></div></div></div>
+{% endif %}
+{% if teachers %}
+<div class="col-md-6"><div class="card"><div class="card-header">Teachers</div><div class="card-body p-0"><ul class="list-group list-group-flush">{% for t in teachers %}<li class="list-group-item"><a href="{% url 'teachers:teacher_detail' t.pk %}">{{ t.full_name }}</a><br><small class="text-muted-2">{{ t.employee_id }}</small></li>{% endfor %}</ul></div></div></div>
+{% endif %}
+{% if parents %}
+<div class="col-md-6"><div class="card"><div class="card-header">Parents</div><div class="card-body p-0"><ul class="list-group list-group-flush">{% for p in parents %}<li class="list-group-item"><a href="{% url 'parents:parent_detail' p.pk %}">{{ p.full_name }}</a><br><small class="text-muted-2">{{ p.cnic }}</small></li>{% endfor %}</ul></div></div></div>
+{% endif %}
+{% if challans %}
+<div class="col-md-6"><div class="card"><div class="card-header">Fee Challans</div><div class="card-body p-0"><ul class="list-group list-group-flush">{% for c in challans %}<li class="list-group-item"><a href="{% url 'fees:challan_detail' c.pk %}">{{ c.challan_no }}</a><br><small class="text-muted-2">{{ c.student.full_name }} · {{ c.month|default:"" }}</small></li>{% endfor %}</ul></div></div></div>
+{% endif %}
+{% if tests %}
+<div class="col-md-6"><div class="card"><div class="card-header">Class Tests</div><div class="card-body p-0"><ul class="list-group list-group-flush">{% for t in tests %}<li class="list-group-item"><a href="{% url 'examinations:classtest_detail' t.pk %}">{{ t.title }}</a><br><small class="text-muted-2">{{ t.school_class.name }} · {{ t.date }}</small></li>{% endfor %}</ul></div></div></div>
+{% endif %}
+{% if not students and not teachers and not parents and not challans and not tests %}
+<div class="empty-state"><i class="bi bi-search"></i><p>No results found. Try a different query.</p></div>
+{% endif %}
+</div>
+{% endblock %}

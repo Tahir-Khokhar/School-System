@@ -1,0 +1,57 @@
+{% extends "portal/portal_base.html" %}
+{% load humanize %}
+{% block sidebar_links %}
+<a href="{% url 'portal:student_home' %}" class="{% if active_section == 'dashboard' %}active{% endif %}"><i class="bi bi-grid-1x2"></i>Dashboard</a>
+<a href="{% url 'portal:student_profile' %}" class="active"><i class="bi bi-person"></i>My Profile</a>
+<a href="{% url 'portal:student_attendance' %}"><i class="bi bi-check2-square"></i>Attendance</a>
+<a href="{% url 'portal:student_homework' %}"><i class="bi bi-pencil-square"></i>Homework</a>
+<a href="{% url 'portal:student_syllabus' %}"><i class="bi bi-list-task"></i>Syllabus</a>
+<a href="{% url 'portal:student_exams' %}"><i class="bi bi-journal-medical"></i>Exams</a>
+<a href="{% url 'portal:student_results' %}"><i class="bi bi-award"></i>Results</a>
+<div class="sidebar-heading">Fees</div>
+<a href="{% url 'portal:student_fees' %}"><i class="bi bi-receipt"></i>Fees</a>
+<a href="{% url 'portal:student_challans' %}"><i class="bi bi-file-earmark-text"></i>Challans</a>
+<a href="{% url 'portal:student_payments' %}"><i class="bi bi-credit-card"></i>Payments</a>
+<div class="sidebar-heading">More</div>
+<a href="{% url 'portal:student_notices' %}"><i class="bi bi-megaphone"></i>Notices</a>
+<a href="{% url 'portal:student_notifications' %}"><i class="bi bi-bell"></i>Notifications</a>
+<a href="{% url 'portal:student_activities' %}"><i class="bi bi-trophy"></i>Activities</a>
+<a href="{% url 'portal:student_academic_year' %}"><i class="bi bi-calendar3"></i>Academic Year</a>
+<a href="{% url 'logout' %}"><i class="bi bi-box-arrow-right"></i>Logout</a>
+{% endblock %}
+{% block portal_content %}
+<h2 class="h4 fw-bold mb-3" style="color:var(--aps-green);"><i class="bi bi-person me-2"></i>My Profile</h2>
+<div class="row g-3">
+  <div class="col-md-4 text-center">
+    <div class="card"><div class="card-body">
+      <div class="avatar-sm mx-auto mb-2" style="width:80px;height:80px;font-size:2rem;">{{ student.full_name|slice:":1"|upper }}</div>
+      <h5 class="mb-0">{{ student.full_name }}</h5>
+      <p class="small text-muted mb-1">{{ student.registration_no }}</p>
+      <span class="badge badge-paid">{{ student.get_status_display }}</span>
+    </div></div>
+  </div>
+  <div class="col-md-8">
+    <div class="card"><div class="card-header">Personal Information</div><div class="card-body p-0">
+      <table class="table mb-0">
+        <tr><th class="w-30">Student Name</th><td>{{ student.full_name }}</td></tr>
+        <tr><th>Father's Name</th><td>{{ student.father_name|default:"—" }}</td></tr>
+        <tr><th>Mother's Name</th><td>{{ student.mother_name|default:"—" }}</td></tr>
+        <tr><th>Date of Birth</th><td>{{ student.date_of_birth|date:"M d, Y"|default:"—" }}</td></tr>
+        <tr><th>Gender</th><td>{{ student.get_gender_display|default:"—" }}</td></tr>
+        <tr><th>Registration No.</th><td><strong>{{ student.registration_no }}</strong></td></tr>
+        <tr><th>Class / Section</th><td>{{ student.class_section_display }}</td></tr>
+        <tr><th>Admission Date</th><td>{{ student.admission_date|date:"M d, Y"|default:"—" }}</td></tr>
+      </table>
+    </div></div>
+    <div class="card mt-3"><div class="card-header">Contact Information</div><div class="card-body p-0">
+      <table class="table mb-0">
+        <tr><th class="w-30">Phone</th><td>{{ student.contact_phone|default:"—" }}</td></tr>
+        <tr><th>Email</th><td>{{ student.email|default:"—" }}</td></tr>
+        <tr><th>Address</th><td>{{ student.address|default:"—" }}</td></tr>
+        <tr><th>Parent / Guardian</th><td>{{ student.parent.full_name|default:"—" }} ({{ student.parent.get_relation_display|default:"" }})</td></tr>
+        <tr><th>Parent Phone</th><td>{{ student.parent.phone|default:"—" }}</td></tr>
+      </table>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

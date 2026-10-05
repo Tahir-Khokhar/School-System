@@ -1,0 +1,26 @@
+{% extends "portal/portal_base.html" %}
+{% load humanize %}
+{% block sidebar_links %}{% include "portal/student/sidebar.html" %}{% endblock %}
+{% block portal_content %}
+<h2 class="h4 fw-bold mb-3" style="color:var(--aps-green);"><i class="bi bi-pencil-square me-2"></i>Homework</h2>
+<div class="card"><div class="card-body p-0">
+  {% if homeworks %}
+  <table class="table table-hover mb-0">
+    <thead><tr><th>Title</th><th>Subject</th><th>Assigned</th><th>Due Date</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for hw in homeworks %}
+      <tr>
+        <td><a href="{% url 'homework:homework_detail' hw.pk %}">{{ hw.title }}</a></td>
+        <td>{{ hw.subject.name|default:"—" }}</td>
+        <td>{{ hw.assigned_date|date:"M d" }}</td>
+        <td>{{ hw.due_date|date:"M d, Y" }}</td>
+        <td><span class="badge badge-status badge-{{ hw.status }}">{{ hw.get_status_display }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state"><i class="bi bi-inbox"></i><p>No homework has been assigned yet.</p></div>
+  {% endif %}
+</div></div>
+{% endblock %}
