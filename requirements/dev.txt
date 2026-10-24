@@ -1,5 +1,0 @@
--r base.txt
-
-# Dev-only
-# ipython
-# django-debug-toolbar
