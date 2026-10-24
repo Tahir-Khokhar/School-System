@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+<h1 class="h3 fw-bold mb-0">Homework</h1>
+{% if perms.homework.add_homework %}<a href="{% url 'homework:homework_create' %}" class="btn btn-primary"><i class="bi bi-plus me-1"></i>New Homework</a>{% endif %}
+</div>
+<div class="card mb-3"><div class="card-body"><form method="get" class="row g-2"><div class="col-md-6"><input type="text" name="q" class="form-control" placeholder="Search" value="{{ request.GET.q }}"></div><div class="col-md-4"><select name="class" class="form-select"><option value="">— All Classes —</option>{% for c in classes %}<option value="{{ c.pk }}">{{ c.name }}</option>{% endfor %}</select></div><div class="col-md-2"><button class="btn btn-outline-primary w-100">Search</button></div></form></div></div>
+<div class="card"><div class="card-body p-0">{% if homeworks %}<table class="table table-hover mb-0"><thead><tr><th>Title</th><th>Class</th><th>Subject</th><th>Assigned</th><th>Due</th><th>Status</th><th class="text-end">Actions</th></tr></thead><tbody>{% for h in homeworks %}<tr><td><a href="{% url 'homework:homework_detail' h.pk %}">{{ h.title }}</a></td><td>{{ h.school_class.name }}</td><td>{{ h.subject.name|default:"—" }}</td><td>{{ h.assigned_date|date:"M d" }}</td><td>{{ h.due_date|date:"M d, Y" }}</td><td><span class="badge badge-status badge-{{ h.status }}">{{ h.get_status_display }}</span></td><td class="text-end"><a href="{% url 'homework:homework_detail' h.pk %}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>{% if perms.homework.change_homework %}<a href="{% url 'homework:homework_edit' h.pk %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></a>{% endif %}</td></tr>{% endfor %}</tbody></table>{% else %}<div class="empty-state"><i class="bi bi-pencil-square"></i></div>{% endif %}</div></div>
+{% endblock %}

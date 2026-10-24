@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-7">
+        <div class="card">
+            <div class="card-header bg-warning text-dark"><i class="bi bi-info-circle me-2"></i>Test Gateway — Development Only</div>
+            <div class="card-body">
+                <h5 class="mb-3">Simulated Payment Page</h5>
+                <p class="small text-muted-2">This is the <strong>test gateway</strong>. It always succeeds and is used for development only. In production this view is NOT accessible.</p>
+                <hr>
+                <h6>Challan Details</h6>
+                <table class="table table-sm mb-3">
+                    <tr><th class="w-50">Challan No</th><td><strong>{{ challan.challan_no }}</strong></td></tr>
+                    <tr><th>Student</th><td>{{ challan.student.full_name }}</td></tr>
+                    <tr><th>Registration</th><td>{{ challan.student.registration_no }}</td></tr>
+                    <tr><th>Class</th><td>{{ challan.student.class_section_display }}</td></tr>
+                    <tr><th>Month</th><td>{{ challan.month|default:"—" }}</td></tr>
+                    <tr class="table-active"><th>Amount Payable</th><td class="h5 mb-0">{{ currency_symbol }}{{ challan.total_payable|floatformat:0|intcomma }}</td></tr>
+                </table>
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="session_id" value="{{ session_id }}">
+                    <input type="hidden" name="challan_no" value="{{ challan.challan_no }}">
+                    <div class="d-grid">
+                        <button class="btn btn-success btn-lg"><i class="bi bi-check-circle me-1"></i>Simulate Successful Payment</button>
+                    </div>
+                </form>
+                <p class="small text-muted-2 mt-3"><i class="bi bi-shield-lock me-1"></i>Server-side verification will still run — this is just a fake "checkout" page.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

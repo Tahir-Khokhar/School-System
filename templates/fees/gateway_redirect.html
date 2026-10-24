@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-7">
+        <div class="card">
+            <div class="card-header"><i class="bi bi-arrow-repeat me-2 text-info"></i>Redirecting to payment gateway...</div>
+            <div class="card-body text-center">
+                <div class="spinner-border text-primary my-3" role="status"></div>
+                <h5 class="mb-2">You are being redirected to the payment gateway</h5>
+                <p class="text-muted-2 small">Challan {{ challan.challan_no }} · Amount {{ currency_symbol }}{{ challan.total_payable|floatformat:0|intcomma }}</p>
+                <p class="small text-muted-2">If you are not redirected automatically within 5 seconds, click the button below.</p>
+                <form method="post" action="{{ checkout_url }}" id="gatewayForm" class="d-none">
+                    {% for field, value in form_fields.items %}
+                        <input type="hidden" name="{{ field }}" value="{{ value }}">
+                    {% endfor %}
+                </form>
+                <button class="btn btn-primary" onclick="document.getElementById('gatewayForm').submit();"><i class="bi bi-credit-card me-1"></i>Continue to Payment</button>
+            </div>
+        </div>
+    </div>
+</div>
+<script>setTimeout(function(){document.getElementById('gatewayForm').submit();}, 2000);</script>
+{% endblock %}

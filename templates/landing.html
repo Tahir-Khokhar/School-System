@@ -1,0 +1,613 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}{{ school_name|default:"Army Public School Lahore" }} — Empowering Students, Connecting Parents{% endblock %}
+
+{% block auth_content %}
+{# ============================================================================ #}
+{# APS LANDING PAGE — Premium, Responsive, Accessible, Functional              #}
+{# All links use real Django URL routes. All stats from real DB.                #}
+{# ============================================================================ #}
+
+<style>
+/* === DESIGN SYSTEM — Green & Gold === */
+:root {
+  --green: #1b5e20;
+  --green-dark: #0d3d12;
+  --green-light: #e8f5e9;
+  --green-mid: #2e7d32;
+  --gold: #d4af37;
+  --gold-dark: #b8941f;
+  --gold-light: #f4d976;
+  --cream: #fdfbf7;
+  --gray: #6c757d;
+  --radius: 12px;
+  --shadow-sm: 0 2px 8px rgba(0,0,0,.06);
+  --shadow-md: 0 8px 24px rgba(0,0,0,.10);
+  --shadow-lg: 0 16px 40px rgba(0,0,0,.14);
+  --transition: all .2s ease;
+}
+html { scroll-behavior: smooth; }
+body { font-family: 'Inter', system-ui, sans-serif; background: #fff; color: #1a1a1a; }
+
+/* === UTILITY === */
+.lps-section { padding: 4rem 0; }
+.lps-section-head { text-align: center; margin-bottom: 3rem; }
+.lps-section-head h2 {
+  font-size: 2rem; font-weight: 700; color: var(--green);
+  position: relative; display: inline-block;
+}
+.lps-section-head h2::after {
+  content: ''; display: block; width: 60px; height: 3px;
+  background: var(--gold); margin: 12px auto 0; border-radius: 2px;
+}
+.lps-section-head p { color: var(--gray); font-size: 1.05rem; margin-top: .5rem; }
+.lps-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: .7rem 1.6rem; border-radius: 50px; font-weight: 600;
+  font-size: .9rem; text-decoration: none; transition: var(--transition);
+  border: 2px solid transparent;
+}
+.lps-btn-green { background: var(--green); color: #fff; border-color: var(--green); }
+.lps-btn-green:hover { background: var(--green-dark); border-color: var(--green-dark); }
+.lps-btn-gold { background: var(--gold); color: var(--green-dark); border-color: var(--gold); }
+.lps-btn-gold:hover { background: var(--gold-light); border-color: var(--gold-light); }
+.lps-btn-outline { background: transparent; color: var(--gold); border-color: var(--gold); }
+.lps-btn-outline:hover { background: var(--gold); color: var(--green-dark); }
+
+/* === TOP BAR === */
+.lps-topbar {
+  background: var(--gold); color: var(--green-dark);
+  font-size: 12px; font-weight: 600; padding: 6px 0;
+}
+.lps-topbar a { color: var(--green-dark); text-decoration: none; }
+.lps-topbar .sep { opacity: .35; margin: 0 8px; }
+.lps-topbar .login-btn {
+  background: var(--green-dark); color: var(--gold);
+  padding: 4px 14px; border-radius: 4px; font-size: 11px; font-weight: 700;
+}
+
+/* === NAVBAR === */
+.lps-navbar {
+  background: var(--green); position: sticky; top: 0; z-index: 1030;
+  box-shadow: 0 2px 8px rgba(0,0,0,.12);
+}
+.lps-navbar .nav-brand { display: flex; align-items: center; gap: 12px; }
+.lps-crest {
+  width: 44px; height: 44px;
+  background: linear-gradient(135deg, var(--green-dark), var(--green));
+  border: 2px solid var(--gold); border-radius: 50%;
+  color: var(--gold); display: flex; align-items: center; justify-content: center;
+  font-size: 1.2rem; flex-shrink: 0;
+}
+.lps-navbar .brand-name { font-size: 1.2rem; font-weight: 800; color: #fff; line-height: 1.1; }
+.lps-navbar .brand-sub { font-size: 9px; letter-spacing: 1.5px; color: rgba(255,255,255,.6); text-transform: uppercase; }
+.lps-navbar .nav-links a {
+  color: #fff; text-decoration: none; padding: 10px 12px;
+  font-size: 14px; font-weight: 500; transition: var(--transition);
+}
+.lps-navbar .nav-links a:hover, .lps-navbar .nav-links a.active {
+  color: var(--gold);
+}
+.lps-nav-toggle {
+  background: transparent; border: none; color: #fff; font-size: 1.5rem;
+  cursor: pointer; display: none;
+}
+@media (max-width: 991px) {
+  .lps-navbar .nav-links { display: none; flex-direction: column; width: 100%; padding: 10px 0; }
+  .lps-navbar.open .nav-links { display: flex; }
+  .lps-nav-toggle { display: block; }
+  .lps-navbar .nav-buttons { display: none; }
+  .lps-navbar.open .nav-buttons { display: flex; flex-direction: column; width: 100%; padding: 10px 15px; gap: 8px; }
+}
+
+/* === HERO === */
+.lps-hero {
+  background: linear-gradient(135deg, var(--green-dark) 0%, var(--green) 50%, var(--green-dark) 100%);
+  color: #fff; padding: 4rem 1rem 5rem; text-align: center;
+  position: relative; overflow: hidden;
+}
+.lps-hero::before {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(circle at 25% 50%, rgba(212,175,55,.10) 0%, transparent 50%);
+}
+.lps-hero .hero-content { position: relative; z-index: 1; max-width: 800px; margin: 0 auto; }
+.lps-hero .crest-lg {
+  width: 90px; height: 90px;
+  background: linear-gradient(135deg, var(--green-dark), var(--green));
+  border: 4px solid var(--gold); border-radius: 50%;
+  color: var(--gold); font-size: 2.5rem;
+  display: inline-flex; align-items: center; justify-content: center;
+  margin-bottom: 1.5rem; box-shadow: var(--shadow-lg);
+}
+.lps-hero h1 {
+  font-size: 2.4rem; font-weight: 800; color: var(--gold);
+  margin-bottom: 1rem; line-height: 1.2;
+}
+.lps-hero .lead {
+  color: rgba(255,255,255,.85); font-size: 1.05rem; margin-bottom: 2rem;
+}
+.lps-hero .btn-group { display: flex; gap: .5rem; justify-content: center; flex-wrap: wrap; }
+@media (max-width: 575px) {
+  .lps-hero h1 { font-size: 1.8rem; }
+  .lps-hero .lead { font-size: .9rem; }
+}
+
+/* === PORTAL CARDS === */
+.lps-portal-card {
+  background: #fff; border: 2px solid var(--green-light); border-radius: var(--radius);
+  overflow: hidden; height: 100%; transition: var(--transition);
+  display: flex; flex-direction: column;
+}
+.lps-portal-card:hover { border-color: var(--green); box-shadow: var(--shadow-md); transform: translateY(-4px); }
+.lps-portal-card .card-head {
+  background: linear-gradient(135deg, var(--green), var(--green-dark));
+  color: var(--gold); padding: 1.5rem; text-align: center;
+}
+.lps-portal-card .card-head i { font-size: 2rem; display: block; margin-bottom: .25rem; }
+.lps-portal-card .card-head h4 { color: #fff; margin: 0; font-size: 1.3rem; }
+.lps-portal-card .card-body { padding: 1.25rem; flex-grow: 1; }
+.lps-portal-card .card-body ul { list-style: none; padding: 0; margin: 0; }
+.lps-portal-card .card-body li {
+  font-size: .85rem; color: #333; padding: 4px 0;
+  display: flex; align-items: center; gap: 6px;
+}
+.lps-portal-card .card-body li i { color: var(--green); font-size: .9rem; }
+.lps-portal-card .card-foot { padding: 0 1.25rem 1.25rem; }
+
+/* === STATS === */
+.lps-stat {
+  text-align: center; padding: 1.25rem 1rem;
+  border: 1px solid var(--green-light); border-radius: var(--radius); background: #fff;
+  transition: var(--transition);
+}
+.lps-stat:hover { border-color: var(--green); box-shadow: var(--shadow-sm); }
+.lps-stat i { font-size: 1.8rem; color: var(--gold); display: block; margin-bottom: .25rem; }
+.lps-stat .num { font-size: 1.8rem; font-weight: 800; color: var(--green); line-height: 1; }
+.lps-stat .label { font-size: .75rem; color: var(--gray); text-transform: uppercase; letter-spacing: 1px; margin-top: .15rem; }
+
+/* === FEATURE CARDS === */
+.lps-feature {
+  text-align: center; padding: 1.5rem 1rem; border-radius: var(--radius);
+  background: #fff; border: 1px solid var(--green-light); transition: var(--transition); height: 100%;
+}
+.lps-feature:hover { background: var(--green-light); border-color: var(--green); }
+.lps-feature i { font-size: 2rem; color: var(--gold); margin-bottom: .5rem; }
+.lps-feature h6 { color: var(--green); font-weight: 600; margin-bottom: .25rem; font-size: .95rem; }
+.lps-feature p { color: var(--gray); font-size: .8rem; margin: 0; }
+
+/* === NOTICE / EVENT CARDS === */
+.lps-notice, .lps-event {
+  border: 1px solid var(--green-light); border-radius: var(--radius); overflow: hidden;
+  background: #fff; height: 100%; transition: var(--transition);
+}
+.lps-notice:hover, .lps-event:hover { box-shadow: var(--shadow-sm); transform: translateY(-2px); }
+.lps-notice .img-ph, .lps-event .img-ph {
+  height: 120px; background: linear-gradient(135deg, var(--green), var(--green-dark));
+  color: var(--gold); display: flex; align-items: center; justify-content: center;
+  font-size: 2rem; position: relative;
+}
+.lps-notice .img-ph .date-badge, .lps-event .img-ph .date-badge {
+  position: absolute; top: 6px; left: 6px;
+  background: var(--gold); color: var(--green-dark);
+  padding: 3px 8px; font-size: 10px; font-weight: 700; border-radius: 4px;
+}
+.lps-notice .body, .lps-event .body { padding: 1rem 1.25rem; }
+.lps-notice .body h6, .lps-event .body h6 { color: var(--green); font-size: .9rem; font-weight: 600; }
+.lps-notice .body p, .lps-event .body p { color: var(--gray); font-size: .8rem; line-height: 1.4; }
+.lps-event .body .meta { color: var(--gold-dark); font-size: .75rem; font-weight: 600; }
+
+/* === WHY CHOOSE === */
+.lps-why { text-align: center; padding: 1.5rem; }
+.lps-why i { font-size: 2.5rem; color: var(--gold); margin-bottom: .5rem; display: block; }
+.lps-why h6 { color: var(--green); font-weight: 600; }
+.lps-why p { color: var(--gray); font-size: .85rem; margin-top: .25rem; }
+
+/* === CTA === */
+.lps-cta {
+  background: linear-gradient(135deg, var(--green-dark), var(--green));
+  color: #fff; padding: 3.5rem 1rem; text-align: center; border-radius: var(--radius);
+}
+.lps-cta h2 { color: var(--gold); font-size: 1.8rem; font-weight: 700; margin-bottom: .75rem; }
+.lps-cta p { color: rgba(255,255,255,.85); margin-bottom: 1.5rem; }
+
+/* === FOOTER === */
+.lps-footer { background: var(--green-dark); color: #c8e6c9; padding: 2.5rem 0 1.25rem; }
+.lps-footer h6 { color: var(--gold); font-weight: 700; font-size: .9rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: .75rem; }
+.lps-footer a { color: #c8e6c9; text-decoration: none; display: block; padding: 3px 0; font-size: .85rem; }
+.lps-footer a:hover { color: var(--gold); }
+.lps-footer .gold-bar { border-top: 2px solid var(--gold); margin-bottom: 1.25rem; }
+.lps-footer .copyright { border-top: 1px solid #2a4a2c; padding-top: 1rem; margin-top: 1.5rem; text-align: center; color: rgba(200,230,201,.5); font-size: .8rem; }
+
+/* === ANIMATIONS === */
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+.lps-animate { animation: fadeInUp .5s ease forwards; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .lps-animate { animation: none; }
+  * { transition: none !important; }
+}
+</style>
+
+{# ============================================================================ #}
+{# 1. TOP UTILITY BAR                                                            #}
+{# ============================================================================ #}
+<div class="lps-topbar">
+  <div class="container d-flex flex-wrap justify-content-between align-items-center">
+    <div class="d-none d-sm-block">
+      <i class="bi bi-geo-alt-fill"></i> {{ school_address|default:"Tufail Road, Lahore Cantt" }}
+      <span class="sep">|</span>
+      <i class="bi bi-telephone-fill"></i> {{ school_phone|default:"+92 42 9920 2040" }}
+      <span class="sep">|</span>
+      <i class="bi bi-envelope-fill"></i> {{ school_email|default:"info@apslahore.edu.pk" }}
+    </div>
+    <div class="d-flex align-items-center gap-3">
+      <a href="#" aria-label="Facebook"><i class="bi bi-facebook"></i></a>
+      <a href="#" aria-label="Instagram"><i class="bi bi-instagram"></i></a>
+      <a href="#" aria-label="YouTube"><i class="bi bi-youtube"></i></a>
+      <a href="{% url 'login' %}" class="login-btn"><i class="bi bi-box-arrow-in-right me-1"></i>Login</a>
+    </div>
+  </div>
+</div>
+
+{# ============================================================================ #}
+{# 2. NAVIGATION BAR                                                             #}
+{# ============================================================================ #}
+<header class="lps-navbar" id="mainNav">
+  <div class="container">
+    <div class="d-flex flex-wrap justify-content-between align-items-center py-2">
+      <a href="{% url 'landing' %}" class="nav-brand text-decoration-none">
+        <span class="lps-crest"><i class="bi bi-book"></i></span>
+        <span>
+          <span class="brand-name d-block">{{ school_name|default:"Army Public School Lahore" }}</span>
+          <span class="brand-sub d-block">Est. 2005 · Lahore Cantt</span>
+        </span>
+      </a>
+      <button class="lps-nav-toggle" aria-label="Toggle navigation" aria-expanded="false" onclick="document.getElementById('mainNav').classList.toggle('open')">
+        <i class="bi bi-list"></i>
+      </button>
+      <nav class="nav-links d-flex align-items-center" aria-label="Main navigation">
+        <a href="#home" class="active">Home</a>
+        <a href="#about">About</a>
+        <a href="#academics">Academics</a>
+        <a href="#admissions">Admissions</a>
+        <a href="#notices">Notices</a>
+        <a href="#events">Events</a>
+        <a href="#contact">Contact</a>
+      </nav>
+      <div class="nav-buttons d-flex align-items-center gap-2">
+        <a href="{% url 'login' %}?next={% url 'portal:student_home' %}" class="lps-btn lps-btn-gold" style="padding:6px 14px;font-size:12px;">Student Portal</a>
+        <a href="{% url 'login' %}?next={% url 'portal:parent_home' %}" class="lps-btn lps-btn-outline" style="padding:6px 14px;font-size:12px;">Parent Portal</a>
+      </div>
+    </div>
+  </div>
+</header>
+
+{# ============================================================================ #}
+{# 3. HERO SECTION                                                               #}
+{# ============================================================================ #}
+<section class="lps-hero" id="home">
+  <div class="hero-content lps-animate">
+    <div class="crest-lg"><i class="bi bi-mortarboard-fill"></i></div>
+    <h1>Empowering Students. Connecting Parents. Building Futures.</h1>
+    <p class="lead">One secure digital platform for academics, attendance, fees, examinations, communication, and everything your school community needs.</p>
+    <div class="btn-group">
+      <a href="{% url 'login' %}?next={% url 'portal:student_home' %}" class="lps-btn lps-btn-gold"><i class="bi bi-mortarboard"></i>Student Portal</a>
+      <a href="{% url 'login' %}?next={% url 'portal:parent_home' %}" class="lps-btn lps-btn-outline"><i class="bi bi-people"></i>Parent Portal</a>
+      <a href="#admissions" class="lps-btn lps-btn-outline"><i class="bi bi-pencil-square"></i>Apply for Admission</a>
+    </div>
+  </div>
+</section>
+
+{# ============================================================================ #}
+{# 4. PORTAL ACCESS SECTION                                                      #}
+{# ============================================================================ #}
+<section class="lps-section" id="portal-access">
+  <div class="container">
+    <div class="lps-section-head">
+      <h2>Your School, Your Digital Portal</h2>
+      <p>Choose your portal and manage everything from one secure place</p>
+    </div>
+    <div class="row g-4">
+      <div class="col-md-6">
+        <div class="lps-portal-card">
+          <div class="card-head"><i class="bi bi-mortarboard-fill"></i><h4>Student Portal</h4></div>
+          <div class="card-body">
+            <ul>
+              <li><i class="bi bi-check-circle-fill"></i>Attendance tracking</li>
+              <li><i class="bi bi-check-circle-fill"></i>Timetable &amp; homework</li>
+              <li><i class="bi bi-check-circle-fill"></i>Examination schedule &amp; results</li>
+              <li><i class="bi bi-check-circle-fill"></i>Fee challans &amp; online payment</li>
+              <li><i class="bi bi-check-circle-fill"></i>Downloadable receipts</li>
+              <li><i class="bi bi-check-circle-fill"></i>Notices, events &amp; activities</li>
+              <li><i class="bi bi-check-circle-fill"></i>Real-time notifications</li>
+              <li><i class="bi bi-check-circle-fill"></i>Academic progress tracking</li>
+            </ul>
+          </div>
+          <div class="card-foot">
+            <a href="{% url 'login' %}?next={% url 'portal:student_home' %}" class="lps-btn lps-btn-green w-100 justify-content-center"><i class="bi bi-box-arrow-in-right"></i>Enter Student Portal</a>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="lps-portal-card">
+          <div class="card-head"><i class="bi bi-people-fill"></i><h4>Parent Portal</h4></div>
+          <div class="card-body">
+            <ul>
+              <li><i class="bi bi-check-circle-fill"></i>View linked children &amp; switch</li>
+              <li><i class="bi bi-check-circle-fill"></i>Child attendance &amp; timetable</li>
+              <li><i class="bi bi-check-circle-fill"></i>Exam results &amp; academic progress</li>
+              <li><i class="bi bi-check-circle-fill"></i>Fee status &amp; outstanding dues</li>
+              <li><i class="bi bi-check-circle-fill"></i>Pay fees online for each child</li>
+              <li><i class="bi bi-check-circle-fill"></i>Payment history &amp; receipts</li>
+              <li><i class="bi bi-check-circle-fill"></i>School notices &amp; events</li>
+              <li><i class="bi bi-check-circle-fill"></i>Instant school notifications</li>
+            </ul>
+          </div>
+          <div class="card-foot">
+            <a href="{% url 'login' %}?next={% url 'portal:parent_home' %}" class="lps-btn lps-btn-green w-100 justify-content-center"><i class="bi bi-box-arrow-in-right"></i>Enter Parent Portal</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+{# ============================================================================ #}
+{# 5. STATISTICS                                                                 #}
+{# ============================================================================ #}
+<section class="lps-section" style="background:var(--green-light);" id="stats">
+  <div class="container">
+    <div class="lps-section-head">
+      <h2>Our School in Numbers</h2>
+      <p>A vibrant educational community</p>
+    </div>
+    <div class="row g-3">
+      <div class="col-4 col-md-2"><div class="lps-stat"><i class="bi bi-mortarboard-fill"></i><div class="num">{{ total_students|default:"1,800"|intcomma }}</div><div class="label">Students</div></div></div>
+      <div class="col-4 col-md-2"><div class="lps-stat"><i class="bi bi-person-badge-fill"></i><div class="num">{{ total_teachers|default:"43" }}</div><div class="label">Teachers</div></div></div>
+      <div class="col-4 col-md-2"><div class="lps-stat"><i class="bi bi-easel-fill"></i><div class="num">{{ total_classes|default:"10" }}</div><div class="label">Classes</div></div></div>
+      <div class="col-4 col-md-2"><div class="lps-stat"><i class="bi bi-grid-fill"></i><div class="num">{{ total_sections|default:"60" }}</div><div class="label">Sections</div></div></div>
+      <div class="col-4 col-md-2"><div class="lps-stat"><i class="bi bi-book-fill"></i><div class="num">{{ total_subjects|default:"25" }}</div><div class="label">Subjects</div></div></div>
+      <div class="col-4 col-md-2"><div class="lps-stat"><i class="bi bi-award-fill"></i><div class="num">20+</div><div class="label">Years</div></div></div>
+    </div>
+  </div>
+</section>
+
+{# ============================================================================ #}
+{# 6. ABOUT SCHOOL                                                               #}
+{# ============================================================================ #}
+<section class="lps-section" id="about">
+  <div class="container">
+    <div class="lps-section-head"><h2>About Our School</h2></div>
+    <div class="row align-items-center g-4">
+      <div class="col-md-6">
+        <p class="lead" style="color:var(--green);font-weight:600;">Quality education rooted in discipline, character, and academic excellence.</p>
+        <p>At {{ school_name|default:"Army Public School Lahore" }}, we believe education is about building character, instilling discipline, and nurturing leaders of tomorrow. Our motto — <em>"{{ school_tagline|default:"I shall rise and shine" }}"</em> — reflects our commitment to empowering every student to reach their fullest potential.</p>
+        <p>Our qualified faculty, modern facilities, and disciplined environment create the perfect foundation for academic achievement and personal growth. With technology-enabled education, we keep parents connected with their child's progress every step of the way.</p>
+        <div class="d-flex gap-3 mt-3">
+          <div><i class="bi bi-check-circle-fill text-success me-1"></i>Academic Excellence</div>
+          <div><i class="bi bi-check-circle-fill text-success me-1"></i>Character Building</div>
+          <div><i class="bi bi-check-circle-fill text-success me-1"></i>Digital Learning</div>
+        </div>
+      </div>
+      <div class="col-md-6 text-center">
+        <div class="lps-crest mx-auto mb-3" style="width:120px;height:120px;font-size:3rem;"><i class="bi bi-book"></i></div>
+        <h4 style="color:var(--green);">{{ school_name|default:"APS Lahore" }}</h4>
+        <p class="text-muted small">"{{ school_tagline|default:"I shall rise and shine" }}"</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+{# ============================================================================ #}
+{# 7. ACADEMIC PROGRAMS                                                          #}
+{# ============================================================================ #}
+<section class="lps-section" style="background:var(--green-light);" id="academics">
+  <div class="container">
+    <div class="lps-section-head"><h2>Academic Excellence</h2><p>Comprehensive education from foundation to matriculation</p></div>
+    <div class="row g-4">
+      <div class="col-md-6 col-lg-3"><div class="lps-feature"><i class="bi bi-1-circle-fill"></i><h6>Primary (1-5)</h6><p>Literacy, numeracy, Quran with Tajweed, character building</p></div></div>
+      <div class="col-md-6 col-lg-3"><div class="lps-feature"><i class="bi bi-2-circle-fill"></i><h6>Middle (6-8)</h6><p>Subject specialists, science labs, computer literacy</p></div></div>
+      <div class="col-md-6 col-lg-3"><div class="lps-feature"><i class="bi bi-3-circle-fill"></i><h6>Secondary (9-10)</h6><p>Computer Science &amp; Biology groups, matriculation prep</p></div></div>
+      <div class="col-md-6 col-lg-3"><div class="lps-feature"><i class="bi bi-award-fill"></i><h6>Co-Curricular</h6><p>Debates, sports, scouts, science exhibitions</p></div></div>
+    </div>
+  </div>
+</section>
+
+{# ============================================================================ #}
+{# 8. PORTAL FEATURES                                                            #}
+{# ============================================================================ #}
+<section class="lps-section" id="features">
+  <div class="container">
+    <div class="lps-section-head"><h2>Everything You Need in One Portal</h2><p>Digital tools for students and parents</p></div>
+    <div class="row g-3">
+      <div class="col-6 col-md-3"><div class="lps-feature"><i class="bi bi-check2-square"></i><h6>Attendance</h6><p>Track daily &amp; monthly attendance</p></div></div>
+      <div class="col-6 col-md-3"><div class="lps-feature"><i class="bi bi-award"></i><h6>Results</h6><p>View exam results &amp; report cards</p></div></div>
+      <div class="col-6 col-md-3"><div class="lps-feature"><i class="bi bi-receipt"></i><h6>Fees</h6><p>Check fee status &amp; outstanding dues</p></div></div>
+      <div class="col-6 col-md-3"><div class="lps-feature"><i class="bi bi-credit-card"></i><h6>Online Payments</h6><p>Pay fees directly through portal</p></div></div>
+      <div class="col-6 col-md-3"><div class="lps-feature"><i class="bi bi-calendar-week"></i><h6>Timetable</h6><p>View daily &amp; weekly schedules</p></div></div>
+      <div class="col-6 col-md-3"><div class="lps-feature"><i class="bi bi-pencil-square"></i><h6>Homework</h6><p>View assignments &amp; due dates</p></div></div>
+      <div class="col-6 col-md-3"><div class="lps-feature"><i class="bi bi-bell"></i><h6>Notifications</h6><p>Receive important school alerts</p></div></div>
+      <div class="col-6 col-md-3"><div class="lps-feature"><i class="bi bi-trophy"></i><h6>Activities</h6><p>Stay updated with school events</p></div></div>
+    </div>
+  </div>
+</section>
+
+{# ============================================================================ #}
+{# 9. ADMISSIONS                                                                 #}
+{# ============================================================================ #}
+<section class="lps-section" style="background:var(--green-light);" id="admissions">
+  <div class="container">
+    <div class="lps-section-head"><h2>Admissions Are More Simple Than Ever</h2><p>Apply, track your application, and stay informed through our digital admission process</p></div>
+    <div class="text-center">
+      <a href="{% url 'admissions:application_list' %}" class="lps-btn lps-btn-green btn-lg"><i class="bi bi-pencil-square"></i>Apply Now</a>
+      <a href="#about" class="lps-btn lps-btn-outline btn-lg"><i class="bi bi-info-circle"></i>Admission Information</a>
+    </div>
+    <div class="row g-3 mt-4">
+      <div class="col-md-4"><div class="lps-feature"><i class="bi bi-1-circle"></i><h6>Step 1: Apply Online</h6><p>Submit application through our ERP portal</p></div></div>
+      <div class="col-md-4"><div class="lps-feature"><i class="bi bi-2-circle"></i><h6>Step 2: Verification</h6><p>Document verification &amp; admission test</p></div></div>
+      <div class="col-md-4"><div class="lps-feature"><i class="bi bi-3-circle"></i><h6>Step 3: Enrollment</h6><p>Class assignment &amp; fee challan generation</p></div></div>
+    </div>
+  </div>
+</section>
+
+{# ============================================================================ #}
+{# 10. NOTICES                                                                   #}
+{# ============================================================================ #}
+<section class="lps-section" id="notices">
+  <div class="container">
+    <div class="lps-section-head"><h2>Latest School Notices</h2></div>
+    <div class="row g-4">
+      {% if latest_notices %}
+        {% for notice in latest_notices %}
+        <div class="col-md-4">
+          <div class="lps-notice">
+            <div class="img-ph"><span class="date-badge">{{ notice.publish_date|date:"d M" }}</span><i class="bi bi-megaphone-fill"></i></div>
+            <div class="body">
+              <h6>{{ notice.title|truncatewords:6 }}</h6>
+              <p>{{ notice.description|truncatewords:15 }}</p>
+              <small class="text-muted">{{ notice.publish_date|date:"M d, Y" }}</small>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="col-12"><div class="empty-state text-center py-5"><i class="bi bi-megaphone" style="font-size:2rem;opacity:.35;"></i><p class="text-muted mt-2">No new notices available.</p></div></div>
+      {% endif %}
+    </div>
+    <div class="text-center mt-4">
+      <a href="{% url 'announcements:list' %}" class="lps-btn lps-btn-outline"><i class="bi bi-megaphone"></i>View All Notices</a>
+    </div>
+  </div>
+</section>
+
+{# ============================================================================ #}
+{# 11. UPCOMING EVENTS                                                           #}
+{# ============================================================================ #}
+<section class="lps-section" style="background:var(--green-light);" id="events">
+  <div class="container">
+    <div class="lps-section-head"><h2>Upcoming Events</h2></div>
+    <div class="row g-4">
+      {% if upcoming_events %}
+        {% for event in upcoming_events %}
+        <div class="col-md-6 col-lg-3">
+          <div class="lps-event">
+            <div class="img-ph"><span class="date-badge">{{ event.start_date|date:"d M" }}</span><i class="bi bi-calendar-event-fill"></i></div>
+            <div class="body">
+              <div class="meta"><i class="bi bi-calendar3 me-1"></i>{{ event.start_date|date:"d M Y" }}</div>
+              <h6>{{ event.title|truncatewords:5 }}</h6>
+              <p>{{ event.description|truncatewords:10|default:"—" }}</p>
+              {% if event.location %}<p><i class="bi bi-geo-alt me-1"></i>{{ event.location }}</p>{% endif %}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="col-12"><div class="text-center py-5"><i class="bi bi-calendar-x" style="font-size:2rem;opacity:.35;"></i><p class="text-muted mt-2">No upcoming events.</p></div></div>
+      {% endif %}
+    </div>
+    <div class="text-center mt-4">
+      <a href="{% url 'school_calendar:event_list' %}" class="lps-btn lps-btn-outline"><i class="bi bi-calendar-event"></i>View All Events</a>
+    </div>
+  </div>
+</section>
+
+{# ============================================================================ #}
+{# 12. WHY CHOOSE US                                                             #}
+{# ============================================================================ #}
+<section class="lps-section" id="why-choose">
+  <div class="container">
+    <div class="lps-section-head"><h2>Why Choose Our School</h2></div>
+    <div class="row g-4">
+      <div class="col-md-4 col-lg-2"><div class="lps-why"><i class="bi bi-book-fill"></i><h6>Quality Education</h6><p>Strong academic foundations</p></div></div>
+      <div class="col-md-4 col-lg-2"><div class="lps-why"><i class="bi bi-person-bounding-box"></i><h6>Student Development</h6><p>Academic &amp; personal growth</p></div></div>
+      <div class="col-md-4 col-lg-2"><div class="lps-why"><i class="bi bi-people-fill"></i><h6>Parent Engagement</h6><p>Connected with child's progress</p></div></div>
+      <div class="col-md-4 col-lg-2"><div class="lps-why"><i class="bi bi-laptop"></i><h6>Digital School</h6><p>Modern digital tools</p></div></div>
+      <div class="col-md-4 col-lg-2"><div class="lps-why"><i class="bi bi-shield-check"></i><h6>Safe Environment</h6><p>Secure learning space</p></div></div>
+      <div class="col-md-4 col-lg-2"><div class="lps-why"><i class="bi bi-award-fill"></i><h6>Experienced Teachers</h6><p>Qualified &amp; dedicated faculty</p></div></div>
+    </div>
+  </div>
+</section>
+
+{# ============================================================================ #}
+{# 13. CALL TO ACTION                                                            #}
+{# ============================================================================ #}
+<section class="lps-section" style="background:var(--green-light);">
+  <div class="container">
+    <div class="lps-cta">
+      <h2>Stay Connected With Your School</h2>
+      <p>Access your academic information, fees, attendance, results, notices and more from one secure platform.</p>
+      <div class="btn-group">
+        <a href="{% url 'login' %}?next={% url 'portal:student_home' %}" class="lps-btn lps-btn-gold"><i class="bi bi-mortarboard"></i>Student Portal</a>
+        <a href="{% url 'login' %}?next={% url 'portal:parent_home' %}" class="lps-btn lps-btn-outline"><i class="bi bi-people"></i>Parent Portal</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+{# ============================================================================ #}
+{# 14. FOOTER                                                                    #}
+{# ============================================================================ #}
+<footer class="lps-footer" id="contact">
+  <div class="container">
+    <div class="gold-bar"></div>
+    <div class="row g-4">
+      <div class="col-md-4">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <span class="lps-crest" style="width:40px;height:40px;font-size:1rem;"><i class="bi bi-book"></i></span>
+          <strong style="color:var(--gold);font-size:1rem;">{{ school_name|default:"Army Public School Lahore" }}</strong>
+        </div>
+        <p class="small mb-1"><i class="bi bi-geo-alt me-1"></i>{{ school_address|default:"Tufail Road, Lahore Cantt, Lahore" }}</p>
+        <p class="small mb-1"><i class="bi bi-telephone me-1"></i>{{ school_phone|default:"+92 42 9920 2040" }}</p>
+        <p class="small mb-1"><i class="bi bi-envelope me-1"></i>{{ school_email|default:"info@apslahore.edu.pk" }}</p>
+        <div class="mt-2 d-flex gap-2">
+          <a href="#" aria-label="Facebook" class="d-inline-block" style="font-size:1.1rem;color:var(--gold)!important;"><i class="bi bi-facebook"></i></a>
+          <a href="#" aria-label="Instagram" class="d-inline-block" style="font-size:1.1rem;color:var(--gold)!important;"><i class="bi bi-instagram"></i></a>
+          <a href="#" aria-label="YouTube" class="d-inline-block" style="font-size:1.1rem;color:var(--gold)!important;"><i class="bi bi-youtube"></i></a>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <h6>Quick Links</h6>
+        <a href="#about">About</a><a href="#academics">Academics</a><a href="#admissions">Admissions</a>
+        <a href="#notices">Notices</a><a href="#events">Events</a>
+      </div>
+      <div class="col-md-3">
+        <h6>Portals</h6>
+        <a href="{% url 'login' %}?next={% url 'portal:student_home' %}">Student Portal</a>
+        <a href="{% url 'login' %}?next={% url 'portal:parent_home' %}">Parent Portal</a>
+        <a href="{% url 'login' %}?next={% url 'portal:teacher_home' %}">Teacher Portal</a>
+        <a href="{% url 'admin:index' %}">Admin Portal</a>
+      </div>
+      <div class="col-md-2">
+        <h6>Legal</h6>
+        <a href="#">Privacy Policy</a><a href="#">Terms &amp; Conditions</a><a href="#">Code of Conduct</a>
+      </div>
+    </div>
+    <div class="copyright">
+      &copy; {% now "Y" %} {{ school_name|default:"Army Public School Lahore" }} · All Rights Reserved · "{{ school_tagline|default:"I shall rise and shine" }}"
+    </div>
+  </div>
+</footer>
+
+<script>
+// Mobile nav toggle — close on link click
+document.querySelectorAll('.lps-navbar .nav-links a').forEach(function(link) {
+  link.addEventListener('click', function() {
+    document.getElementById('mainNav').classList.remove('open');
+  });
+});
+
+// Active nav highlight on scroll
+var sections = document.querySelectorAll('section[id]');
+var navLinks = document.querySelectorAll('.lps-navbar .nav-links a');
+window.addEventListener('scroll', function() {
+  var current = '';
+  sections.forEach(function(sec) {
+    if (window.scrollY >= (sec.offsetTop - 100)) current = sec.id;
+  });
+  navLinks.forEach(function(link) {
+    link.classList.remove('active');
+    if (link.getAttribute('href') === '#' + current) link.classList.add('active');
+  });
+});
+</script>
+{% endblock %}

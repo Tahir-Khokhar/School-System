@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+<h1 class="h3 fw-bold mb-0">Academic Years</h1>
+{% if perms.common.add_academicyear %}
+<a href="{% url 'common:academic_year_create' %}" class="btn btn-primary"><i class="bi bi-plus me-1"></i>New Academic Year</a>
+{% endif %}
+</div>
+<div class="card"><div class="card-body p-0">
+{% if years %}
+<table class="table table-hover mb-0">
+<thead><tr><th>Name</th><th>Start</th><th>End</th><th>Status</th><th class="text-end">Actions</th></tr></thead>
+<tbody>
+{% for y in years %}
+<tr>
+<td><strong>{{ y.name }}</strong></td>
+<td>{{ y.start_date|date:"M d, Y" }}</td>
+<td>{{ y.end_date|date:"M d, Y" }}</td>
+<td>{% if y.is_active %}<span class="badge bg-soft-success">Active</span>{% elif y.is_archived %}<span class="badge badge-draft">Archived</span>{% else %}<span class="badge badge-draft">Inactive</span>{% endif %}</td>
+<td class="text-end">
+<a href="{% url 'common:academic_year_detail' y.pk %}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
+{% if not y.is_active and perms.common.change_academicyear %}
+<form method="post" action="{% url 'common:academic_year_activate' y.pk %}" class="d-inline">{% csrf_token %}<button class="btn btn-sm btn-outline-success" data-confirm="Make this the active year?"><i class="bi bi-check-circle"></i></button></form>
+{% endif %}
+</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{% else %}
+<div class="empty-state"><i class="bi bi-calendar"></i><p>No academic years yet.</p></div>
+{% endif %}
+</div></div>
+{% endblock %}

@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
+<div class="container" style="max-width: 700px;"><div class="card"><div class="card-header text-center bg-primary text-white py-3"><h2 class="h4 mb-0">{{ school_name|default:"School ERP" }}</h2><p class="small mb-0">Salary Slip</p></div>
+<div class="card-body"><div class="row mb-3"><div class="col-6"><p class="mb-0"><strong>Employee:</strong> {{ payroll.teacher.full_name }}</p><p class="mb-0"><strong>Employee ID:</strong> {{ payroll.teacher.employee_id }}</p><p class="mb-0"><strong>Designation:</strong> {{ payroll.teacher.designation|default:"—" }}</p></div><div class="col-6 text-end"><p class="mb-0"><strong>Month:</strong> {{ payroll.month }}</p><p class="mb-0"><strong>Status:</strong> {{ payroll.get_status_display }}</p></div></div>
+<hr><table class="table table-bordered"><thead><tr><th>Description</th><th class="text-end">Amount</th></tr></thead><tbody><tr><td>Basic Salary</td><td class="text-end">{{ currency_symbol }}{{ payroll.basic_salary|floatformat:0|intcomma }}</td></tr><tr><td>Allowances</td><td class="text-end">{{ currency_symbol }}{{ payroll.allowances|floatformat:0|intcomma }}</td></tr><tr><td>Bonus</td><td class="text-end">{{ currency_symbol }}{{ payroll.bonus|floatformat:0|intcomma }}</td></tr><tr><td>Deductions</td><td class="text-end">- {{ currency_symbol }}{{ payroll.deductions|floatformat:0|intcomma }}</td></tr><tr><td>Leave Deductions</td><td class="text-end">- {{ currency_symbol }}{{ payroll.leave_deductions|floatformat:0|intcomma }}</td></tr></tbody><tfoot><tr class="table-active"><th>Net Salary</th><th class="text-end h5">{{ currency_symbol }}{{ payroll.net_salary|floatformat:0|intcomma }}</th></tr></tfoot></table>
+{% if payroll.payment %}<div class="alert alert-success"><strong><i class="bi bi-check-circle me-1"></i>Paid</strong> on {{ payroll.payment.payment_date|date:"M d, Y" }} via {{ payroll.payment.get_method_display }}.</div>{% endif %}
+<p class="small text-muted-2 mt-3">This is a computer-generated salary slip and does not require a physical signature.</p>
+</div></div></div>
+{% endblock %}

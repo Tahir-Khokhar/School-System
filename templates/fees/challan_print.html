@@ -1,0 +1,306 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block content %}
+<style>
+  /* APS Bahawalpur voucher style — 3 side-by-side copies */
+  .aps-voucher-page {
+    background: #fff;
+    color: #000;
+    padding: 1.5rem 0.5rem;
+    font-family: 'Helvetica', 'Arial', sans-serif;
+    font-size: 11px;
+  }
+  .aps-voucher-title {
+    text-align: center;
+    font-size: 14px;
+    font-weight: 700;
+    color: #1b5e20;
+    margin-bottom: 10px;
+  }
+  .aps-voucher-title .small {
+    font-size: 10px;
+    color: #666;
+    font-weight: 400;
+  }
+
+  /* Three side-by-side copies */
+  .voucher-row {
+    display: flex;
+    border: 2px solid #1b5e20;
+    margin-bottom: 12px;
+    page-break-after: always;
+  }
+  .voucher-copy {
+    flex: 1;
+    border-right: 1px dashed #1b5e20;
+    padding: 8px;
+    page-break-inside: avoid;
+  }
+  .voucher-copy:last-child {
+    border-right: none;
+  }
+
+  /* Header of each voucher copy */
+  .vc-header {
+    text-align: center;
+    border-bottom: 1px solid #999;
+    padding-bottom: 6px;
+    margin-bottom: 6px;
+  }
+  .vc-date {
+    font-size: 9px;
+    color: #666;
+    text-align: right;
+    margin-bottom: 4px;
+  }
+  .vc-crest {
+    width: 40px; height: 40px;
+    background: #1b5e20;
+    border: 2px solid #d4af37;
+    border-radius: 50%;
+    display: inline-block;
+    color: #d4af37;
+    text-align: center;
+    line-height: 36px;
+    font-size: 18px;
+    vertical-align: middle;
+    margin-bottom: 4px;
+  }
+  .vc-school-name {
+    font-size: 11px;
+    font-weight: 700;
+    color: #1b5e20;
+    line-height: 1.2;
+  }
+  .vc-school-loc {
+    font-size: 9px;
+    color: #555;
+  }
+  .vc-fee-slip {
+    font-size: 10px;
+    font-weight: 600;
+    margin-top: 4px;
+  }
+  .vc-voucher-no {
+    text-align: right;
+    font-size: 9px;
+    margin-top: 4px;
+    font-weight: 600;
+  }
+  .vc-copy-label {
+    text-align: center;
+    font-size: 8px;
+    font-style: italic;
+    color: #888;
+    margin-bottom: 4px;
+  }
+
+  /* Student info table */
+  .vc-info-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9px;
+    margin-bottom: 6px;
+  }
+  .vc-info-table td {
+    padding: 2px 4px;
+    border: 1px solid #ccc;
+  }
+  .vc-info-table td.label {
+    background: #f1f8e9;
+    font-weight: 600;
+    color: #1b5e20;
+    width: 35%;
+  }
+
+  /* Fee breakdown table — 12 rows */
+  .vc-fee-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9px;
+    margin-bottom: 6px;
+  }
+  .vc-fee-table th {
+    background: #1b5e20;
+    color: #fff;
+    padding: 3px 4px;
+    border: 1px solid #1b5e20;
+    font-size: 9px;
+    font-weight: 600;
+    text-align: left;
+  }
+  .vc-fee-table td {
+    padding: 2px 4px;
+    border: 1px solid #ccc;
+  }
+  .vc-fee-table td.amt {
+    text-align: right;
+    font-family: monospace;
+  }
+  .vc-fee-table tfoot td {
+    border-top: 2px solid #1b5e20;
+    background: #f1f8e9;
+    font-weight: 700;
+    color: #1b5e20;
+  }
+  .vc-fee-table tfoot td.amt {
+    font-size: 11px;
+  }
+
+  /* Reference numbers */
+  .vc-refs {
+    text-align: center;
+    font-size: 8px;
+    color: #666;
+    margin: 4px 0;
+    font-family: monospace;
+  }
+  .vc-refs strong {
+    color: #1b5e20;
+    font-size: 9px;
+  }
+
+  /* QR code */
+  .vc-qr {
+    text-align: center;
+    margin-top: 6px;
+  }
+  .vc-qr img {
+    width: 60px; height: 60px;
+  }
+
+  /* Footer */
+  .vc-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-top: 8px;
+    font-size: 9px;
+    border-top: 1px dotted #999;
+    padding-top: 4px;
+  }
+  .vc-footer .label {
+    border-top: 1px solid #000;
+    padding-top: 2px;
+    width: 40%;
+    text-align: center;
+    font-weight: 600;
+  }
+
+  /* PAID stamp */
+  .paid-stamp {
+    display: inline-block;
+    padding: 4px 14px;
+    border: 3px solid #16a34a;
+    color: #16a34a;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-size: 14px;
+    letter-spacing: 3px;
+    transform: rotate(-8deg);
+    border-radius: 4px;
+    background: rgba(22,163,74,.06);
+    margin: 4px 0;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-8deg);
+    z-index: 5;
+  }
+  .voucher-copy { position: relative; }
+
+  /* Print A4 portrait */
+  @page { size: A4 portrait; margin: 8mm; }
+  @media print {
+    body { background: #fff; }
+    .no-print { display: none; }
+  }
+</style>
+
+<div class="aps-voucher-page">
+  <div class="aps-voucher-title">
+    Print Fee Voucher — {{ school_name|default:"Army Public School Lahore" }}
+    <div class="small">Three copies for Bank / School / Student</div>
+  </div>
+
+  <!-- Build the 3 copies in a row (Bank / School / Student) -->
+  <div class="voucher-row">
+    {% for copy_label in copy_labels %}
+    <div class="voucher-copy">
+      <div class="vc-copy-label">— {{ copy_label }} Copy —</div>
+      <div class="vc-date">{% now "d/m/Y, H:i" %}</div>
+      <div class="vc-header">
+        <div class="vc-crest"><i class="bi bi-book"></i></div>
+        <div class="vc-school-name">{{ school_name|default:"Army Public School Lahore" }}</div>
+        <div class="vc-school-loc">{{ school_address|default:"Tufail Road, Lahore Cantt, Lahore" }}</div>
+        <div class="vc-fee-slip">Fee Deposit Slip</div>
+        <div class="vc-voucher-no">Voucher No: <strong>{{ challan.challan_no }}</strong></div>
+      </div>
+
+      {% if challan.status == 'paid' %}
+      <div class="paid-stamp">PAID</div>
+      {% endif %}
+
+      <!-- Student info table -->
+      <table class="vc-info-table">
+        <tr><td class="label">Issue Date</td><td>{{ challan.issue_date|date:"d-m-Y" }}</td></tr>
+        <tr><td class="label">Due Date</td><td>{{ challan.due_date|date:"d-m-Y" }}</td></tr>
+        <tr><td class="label">Class</td><td>{{ challan.student.class_section_display }}</td></tr>
+        <tr><td class="label">Month</td><td>{{ challan.month|default:"—" }}</td></tr>
+        <tr><td class="label">Admission No.</td><td>{{ challan.student.registration_no }}</td></tr>
+        <tr><td class="label">Student's Name</td><td>{{ challan.student.full_name }}</td></tr>
+        <tr><td class="label">Father's Name</td><td>{{ challan.student.father_name|default:"—" }}</td></tr>
+      </table>
+
+      <!-- Fee breakdown table — 12 rows matching APS format -->
+      <table class="vc-fee-table">
+        <thead>
+          <tr><th>#</th><th>Fee Type</th><th class="amt">Amount (Rs.)</th></tr>
+        </thead>
+        <tbody>
+          {% for item in fee_rows %}
+          <tr>
+            <td>{{ forloop.counter }}</td>
+            <td>{{ item.label }}</td>
+            <td class="amt">{{ item.amount|floatformat:0 }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="2">Total Amount Payable</td>
+            <td class="amt">Rs. {{ challan.total_payable|floatformat:0 }}/-</td>
+          </tr>
+          <tr>
+            <td colspan="2">Total After Due Date (incl. late fee)</td>
+            <td class="amt">Rs. {{ total_after_due|floatformat:0 }}/-</td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <!-- Reference numbers -->
+      <div class="vc-refs">
+        <strong>{{ challan.student.registration_no|cut:"-" }}</strong><br>
+        {{ challan.challan_no|cut:"-" }}
+      </div>
+
+      <!-- QR code -->
+      <div class="vc-qr">
+        {% if qr_svg %}{{ qr_svg|safe }}{% endif %}
+      </div>
+
+      <!-- Bank info -->
+      <div style="font-size: 8px; text-align: center; margin-top: 4px; color: #555;">
+        For deposit through Askari Cash (ACMS) / Kuickpay App
+      </div>
+
+      <!-- Footer: Account Officer + Bank Stamp -->
+      <div class="vc-footer">
+        <div class="label">Account Officer</div>
+        <div class="label">Bank's Stamp &amp; Signature</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

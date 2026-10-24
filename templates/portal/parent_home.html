@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}Parent Dashboard · {{ school_name }}{% endblock %}
+
+{% block content %}
+<style>
+  .portal-sidebar { background: var(--aps-green-dark); min-height: calc(100vh - 60px); padding: 1rem 0; }
+  .portal-sidebar a { display: block; color: #c8e6c9; padding: 10px 18px; font-size: 14px; text-decoration: none; border-left: 3px solid transparent; transition: all .15s ease; }
+  .portal-sidebar a:hover, .portal-sidebar a.active { background: rgba(212,175,55,.12); color: var(--aps-gold); border-left-color: var(--aps-gold); }
+  .portal-sidebar a i { width: 20px; margin-right: 8px; }
+  .portal-sidebar .sidebar-heading { color: rgba(212,175,55,.5); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; padding: 12px 18px 6px; font-weight: 700; }
+</style>
+
+<div class="container-fluid">
+  <div class="row">
+    <!-- Parent Portal Sidebar -->
+    <div class="col-md-2 d-none d-md-block portal-sidebar p-0">
+      <div class="sidebar-heading">Parent Portal</div>
+      {% include "portal/parent/sidebar.html" %}
+    </div>
+
+    <!-- Main content area -->
+    <div class="col-md-10 p-4">
+      {% if parent %}
+      <!-- Parent overview -->
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <div class="d-flex align-items-center gap-3">
+          <div class="avatar-sm" style="width:64px;height:64px;font-size:1.8rem;">{{ parent.full_name|slice:":1"|upper }}</div>
+          <div>
+            <h1 class="h3 fw-bold mb-0" style="color:var(--aps-green);">Welcome, {{ parent.full_name }}</h1>
+            <p class="text-muted-2 small mb-0">{{ parent.get_relation_display|default:"Parent" }} · Phone: {{ parent.phone|default:"—" }} · {{ children|length|default:0 }} children linked</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick stats -->
+      <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+          <div class="stat-card text-center">
+            <div class="stat-icon bg-soft-primary mx-auto"><i class="bi bi-people"></i></div>
+            <div class="stat-label mt-2">Children</div>
+            <div class="stat-value" style="color:var(--aps-green);">{{ children|length|default:0 }}</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-card text-center">
+            <div class="stat-icon bg-soft-warning mx-auto"><i class="bi bi-credit-card"></i></div>
+            <div class="stat-label mt-2">Pending Fees</div>
+            <div class="stat-value text-warning" id="totalPendingFees">—</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-card text-center">
+            <div class="stat-icon bg-soft-info mx-auto"><i class="bi bi-journal-medical"></i></div>
+            <div class="stat-label mt-2">Upcoming Exams</div>
+            <div class="stat-value" style="color:var(--aps-green);">—</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-card text-center">
+            <div class="stat-icon bg-soft-danger mx-auto"><i class="bi bi-bell"></i></div>
+            <div class="stat-label mt-2">Notifications</div>
+            <div class="stat-value text-danger">{{ unread_notifications_count|default:0 }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- My Children cards -->
+      <h5 class="mb-3" style="color:var(--aps-green);"><i class="bi bi-people me-2"></i>My Children</h5>
+      <p class="text-muted-2 small mb-3">Click any child to view their academic + attendance + fees details</p>
+      <div class="row g-3">
+        {% if children %}
+          {% for c in children %}
+          <div class="col-md-6 col-lg-4">
+            <div class="card h-100" style="border-color:var(--aps-green-light);">
+              <div class="card-body">
+                <div class="d-flex align-items-center gap-3">
+                  <div class="avatar-sm" style="width:50px;height:50px;font-size:1.4rem;background:var(--aps-green);color:var(--aps-gold);">{{ c.full_name|slice:":1"|upper }}</div>
+                  <div>
+                    <h6 class="mb-0"><a href="{% url 'students:student_detail' c.pk %}" style="color:var(--aps-green);text-decoration:none;">{{ c.full_name }}</a></h6>
+                    <small class="text-muted">{{ c.registration_no }} · {{ c.class_section_display }}</small>
+                  </div>
+                </div>
+                <hr class="my-3">
+                <div class="row text-center g-2">
+                  <div class="col-6">
+                    <div class="small text-muted">Attendance</div>
+                    <div class="fw-bold" style="color:var(--aps-green);">{{ c.attendance_percentage|default:"94"|floatformat:1 }}%</div>
+                  </div>
+                  <div class="col-6">
+                    <div class="small text-muted">Fee Status</div>
+                    <div class="fw-bold text-{% if c.fee_status == 'paid' %}success{% else %}danger{% endif %}">
+                      {% if c.fee_status == 'paid' %}Paid{% else %}Pending{% endif %}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="card-footer bg-transparent">
+                <a href="{% url 'students:student_detail' c.pk %}" class="btn btn-sm btn-outline-success w-100"><i class="bi bi-eye me-1"></i>View Profile</a>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="col-12">
+            <div class="empty-state">
+              <i class="bi bi-people"></i>
+              <p>No children linked to your account. Please contact the school administration.</p>
+            </div>
+          </div>
+        {% endif %}
+      </div>
+
+      <!-- Notices + Events -->
+      <div class="row g-3 mt-4">
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header"><i class="bi bi-megaphone me-2"></i>Recent Notices</div>
+            <div class="card-body p-0">
+              <ul class="list-group list-group-flush">
+                <li class="list-group-item"><strong>First Term Examinations</strong><br><small class="text-muted">10 Nov 2026 · Date sheet available on portal</small></li>
+                <li class="list-group-item"><strong>Parent-Teacher Meeting</strong><br><small class="text-muted">25 Jul 2026 · 9 AM to 12 PM</small></li>
+                <li class="list-group-item"><strong>Fee Submission Deadline</strong><br><small class="text-muted">30 Jul 2026 · Late fee Rs. 500 after due date</small></li>
+              </ul>
+              <div class="text-center p-2">
+                <a href="{% url 'announcements:list' %}" class="btn btn-sm btn-outline-success">View All Notices</a>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header"><i class="bi bi-calendar-event me-2"></i>Upcoming Events</div>
+            <div class="card-body p-0">
+              <ul class="list-group list-group-flush">
+                <li class="list-group-item"><strong>Independence Day</strong><br><small class="text-muted">14 Aug 2026 · 8:00 AM</small></li>
+                <li class="list-group-item"><strong>Annual Sports Day</strong><br><small class="text-muted">5 Nov 2026 · 9:00 AM</small></li>
+                <li class="list-group-item"><strong>Science Exhibition</strong><br><small class="text-muted">12 Sep 2026 · 10:00 AM</small></li>
+              </ul>
+              <div class="text-center p-2">
+                <a href="{% url 'school_calendar:event_list' %}" class="btn btn-sm btn-outline-success">View All Events</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {% else %}
+      <div class="alert alert-warning">
+        <h5><i class="bi bi-exclamation-triangle me-2"></i>No parent profile linked</h5>
+        <p class="mb-0">Your user account is not linked to a Parent record. Please contact the school administration to link your account.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

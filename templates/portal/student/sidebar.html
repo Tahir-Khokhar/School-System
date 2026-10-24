@@ -1,0 +1,23 @@
+{# Student Portal Sidebar — shared across all student portal pages #}
+<a href="{% url 'portal:student_home' %}" class="{% if active_section == 'dashboard' %}active{% endif %}"><i class="bi bi-grid-1x2"></i>Dashboard</a>
+<a href="{% url 'portal:student_profile' %}" class="{% if active_section == 'profile' %}active{% endif %}"><i class="bi bi-person"></i>My Profile</a>
+<a href="{% url 'portal:student_attendance' %}" class="{% if active_section == 'attendance' %}active{% endif %}"><i class="bi bi-check2-square"></i>Attendance</a>
+<a href="{% url 'portal:student_timetable' %}"><i class="bi bi-calendar-week"></i>Timetable</a>
+<a href="{% url 'portal:student_homework' %}" class="{% if active_section == 'homework' %}active{% endif %}"><i class="bi bi-pencil-square"></i>Homework</a>
+<a href="{% url 'portal:student_diary' %}"><i class="bi bi-journal-text"></i>Diary</a>
+<a href="{% url 'portal:student_syllabus' %}"><i class="bi bi-list-task"></i>Syllabus</a>
+<a href="{% url 'portal:student_exams' %}"><i class="bi bi-journal-medical"></i>Exams</a>
+<a href="{% url 'portal:student_datesheet' %}"><i class="bi bi-calendar2-week"></i>Date Sheet</a>
+<a href="{% url 'portal:student_results' %}" class="{% if active_section == 'results' %}active{% endif %}"><i class="bi bi-award"></i>Results</a>
+<div class="sidebar-heading">Fees</div>
+<a href="{% url 'portal:student_fees' %}" class="{% if active_section == 'fees' %}active{% endif %}"><i class="bi bi-receipt"></i>Fees</a>
+<a href="{% url 'portal:student_challans' %}"><i class="bi bi-file-earmark-text"></i>Challans</a>
+<a href="{% url 'portal:student_payments' %}"><i class="bi bi-credit-card"></i>Payments</a>
+<a href="{% url 'portal:student_receipts' %}"><i class="bi bi-file-earmark-pdf"></i>Receipts</a>
+<div class="sidebar-heading">Engagement</div>
+<a href="{% url 'portal:student_activities' %}"><i class="bi bi-trophy"></i>Activities</a>
+<a href="{% url 'portal:student_notices' %}"><i class="bi bi-megaphone"></i>Notices</a>
+<a href="{% url 'portal:student_notifications' %}"><i class="bi bi-bell"></i>Notifications</a>
+<a href="{% url 'portal:student_academic_year' %}"><i class="bi bi-calendar3"></i>Academic Year</a>
+<div class="sidebar-heading">Account</div>
+<a href="{% url 'logout' %}"><i class="bi bi-box-arrow-right"></i>Logout</a>

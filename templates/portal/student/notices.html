@@ -1,0 +1,23 @@
+{% extends "portal/portal_base.html" %}
+{% block sidebar_links %}{% include "portal/student/sidebar.html" %}{% endblock %}
+{% block portal_content %}
+<h2 class="h4 fw-bold mb-3" style="color:var(--aps-green);"><i class="bi bi-megaphone me-2"></i>School Notices</h2>
+<div class="card"><div class="card-body p-0">
+  {% if announcements %}
+  <ul class="list-group list-group-flush">
+    {% for a in announcements %}
+    <li class="list-group-item">
+      <div class="d-flex justify-content-between">
+        <strong>{{ a.title }}</strong>
+        <small class="text-muted">{{ a.publish_date|date:"M d, Y" }}</small>
+      </div>
+      <p class="small text-muted mb-0 mt-1">{{ a.description|truncatewords:30 }}</p>
+      <small class="text-muted">Published by: {{ a.author|default:"School Administration" }}</small>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty-state"><i class="bi bi-megaphone"></i><p>No notices published yet.</p></div>
+  {% endif %}
+</div></div>
+{% endblock %}
