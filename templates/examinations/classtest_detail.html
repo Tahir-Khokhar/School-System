@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3"><h1 class="h3 fw-bold mb-0">{{ test.title }}</h1><span class="badge {% if test.status == 'published' %}badge-paid{% else %}badge-draft{% endif %}">{{ test.get_status_display }}</span></div>
+<div class="card mb-3"><div class="card-header">Test Information</div><div class="card-body p-0"><table class="table mb-0"><tr><th class="w-25">Title</th><td>{{ test.title }}</td></tr><tr><th>Class</th><td>{{ test.school_class.name }}</td></tr><tr><th>Subject</th><td>{{ test.subject.name }}</td></tr><tr><th>Date</th><td>{{ test.date|date:"M d, Y" }}</td></tr><tr><th>Total Marks</th><td>{{ test.total_marks|floatformat:0 }}</td></tr><tr><th>Passing Marks</th><td>{{ test.passing_marks|floatformat:0 }}</td></tr><tr><th>Topics</th><td>{{ test.topics|default:"—" }}</td></tr></table></div></div>
+{% if perms.examinations.add_testresult %}<a href="{% url 'examinations:classtest_results' test.pk %}" class="btn btn-success"><i class="bi bi-pencil-square me-1"></i>Enter / Edit Marks</a>{% endif %}
+{% endblock %}

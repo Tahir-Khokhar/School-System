@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-7">
+        <div class="card">
+            <div class="card-header"><i class="bi bi-shield-lock me-2 text-primary"></i>Set up Two-Factor Authentication (2FA)</div>
+            <div class="card-body">
+                <div class="alert alert-info"><i class="bi bi-info-circle me-1"></i> Two-factor authentication adds an extra layer of security to your account. Even if someone steals your password, they cannot log in without the code from your authenticator app.</div>
+
+                <h6 class="mb-3">Step 1 — Install an authenticator app</h6>
+                <p class="small text-muted-2">Choose one of: Google Authenticator, Microsoft Authenticator, Authy, or 1Password (all free).</p>
+
+                <h6 class="mb-3 mt-4">Step 2 — Scan this QR code</h6>
+                <div class="text-center my-3 p-3 border rounded bg-light">
+                    {{ qr_svg|safe }}
+                </div>
+                <details class="mb-3">
+                    <summary class="small text-muted-2 cursor-pointer">Can't scan? Show the secret code instead</summary>
+                    <div class="mt-2 p-2 bg-light small"><code>{{ otp_url }}</code></div>
+                </details>
+
+                <h6 class="mb-3 mt-4">Step 3 — Enter the 6-digit code shown in your app</h6>
+                <form method="post" action="{% url 'accounts:verify_2fa' %}">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">Current 6-digit token</label>
+                        <input type="text" name="token" inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+                               class="form-control form-control-lg text-center"
+                               style="font-size:1.6rem; letter-spacing:8px"
+                               autocomplete="one-time-code" required autofocus>
+                    </div>
+                    <button class="btn btn-primary btn-lg w-100"><i class="bi bi-check-lg me-1"></i>Verify &amp; Enable 2FA</button>
+                </form>
+
+                <hr class="my-4">
+                <details>
+                    <summary class="small text-danger cursor-pointer">Disable 2FA (requires password re-entry)</summary>
+                    <form method="post" action="{% url 'accounts:disable_2fa' %}" class="mt-2">
+                        {% csrf_token %}
+                        <div class="mb-2">
+                            <label class="form-label small">Confirm your password</label>
+                            <input type="password" name="password" class="form-control" required>
+                        </div>
+                        <button class="btn btn-danger btn-sm"><i class="bi bi-x-circle me-1"></i>Disable 2FA</button>
+                    </form>
+                </details>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

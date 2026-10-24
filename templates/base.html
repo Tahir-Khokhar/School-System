@@ -1,0 +1,44 @@
+{% load static %}
+{% load humanize %}
+{% load i18n %}
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="{{ request.COOKIES.theme|default:'light' }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="School ERP - comprehensive school management system">
+    <title>{% block title %}{{ school_name|default:"School ERP" }}{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="{% static 'css/style.css' %}" rel="stylesheet">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+{% if user.is_authenticated %}
+{% include "includes/sidebar.html" %}
+<div class="main-wrapper" id="main-wrapper">
+    {% include "includes/navbar.html" %}
+    <main class="content-wrapper px-3 px-md-4 py-3">
+        {% include "includes/breadcrumbs.html" %}
+        {% include "includes/messages.html" %}
+        {% block content %}{% endblock %}
+    </main>
+    <footer class="footer-bar px-4 py-2 text-muted small d-flex justify-content-between">
+        <span>&copy; {% now "Y" %} {{ school_name|default:"School ERP" }} · {{ school_tagline|default:"" }}</span>
+        <span>v1.0.0</span>
+    </footer>
+</div>
+{% else %}
+<main class="auth-wrapper">
+    {% include "includes/messages.html" %}
+    {% block auth_content %}{% endblock %}
+</main>
+{% endif %}
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="{% static 'js/app.js' %}"></script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

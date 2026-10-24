@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}Dashboard · {{ school_name }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1 class="h3 fw-bold mb-0">Welcome back, {{ user.get_full_name|default:user.get_username }}</h1>
+        <p class="text-muted-2 small mb-0">
+            {% if active_academic_year %}
+            <span class="badge bg-soft-primary me-2">{{ active_academic_year.name }}</span>
+            {% endif %}
+            Active academic year
+        </p>
+    </div>
+    <div class="d-none d-md-flex gap-2">
+        <a href="{% url 'fees:challan_generate' %}" class="btn btn-outline-primary btn-sm"><i class="bi bi-receipt me-1"></i>Generate Challans</a>
+        <a href="{% url 'admissions:application_create' %}" class="btn btn-outline-primary btn-sm"><i class="bi bi-person-plus me-1"></i>New Admission</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="stat-card">
+            <div class="d-flex justify-content-between">
+                <div class="stat-icon bg-soft-primary"><i class="bi bi-mortarboard"></i></div>
+                <span class="stat-trend text-muted-2">{{ total_students|intcomma }} total</span>
+            </div>
+            <div class="stat-label mt-2">Active Students</div>
+            <div class="stat-value">{{ total_students|intcomma }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="stat-card">
+            <div class="d-flex justify-content-between">
+                <div class="stat-icon bg-soft-info"><i class="bi bi-person-badge"></i></div>
+                <span class="stat-trend text-muted-2">{{ total_teachers }} active</span>
+            </div>
+            <div class="stat-label mt-2">Teachers</div>
+            <div class="stat-value">{{ total_teachers|intcomma }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="stat-card">
+            <div class="d-flex justify-content-between">
+                <div class="stat-icon bg-soft-success"><i class="bi bi-check2-square"></i></div>
+                <span class="stat-trend text-success">{{ students_absent_today }} absent</span>
+            </div>
+            <div class="stat-label mt-2">Present Today</div>
+            <div class="stat-value">{{ students_present_today|intcomma }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="stat-card">
+            <div class="d-flex justify-content-between">
+                <div class="stat-icon bg-soft-warning"><i class="bi bi-credit-card"></i></div>
+                <span class="stat-trend text-muted-2">payments today</span>
+            </div>
+            <div class="stat-label mt-2">Fee Payments Today</div>
+            <div class="stat-value">{{ fee_payments_today|intcomma }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-lg-8">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-graph-up me-2"></i>Monthly Fee Collection</span>
+                <span class="text-muted-2 small">last 6 months</span>
+            </div>
+            <div class="card-body">
+                <canvas id="feeChart" height="120"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card h-100">
+            <div class="card-header"><i class="bi bi-bar-chart me-2"></i>Enrollment by Class</div>
+            <div class="card-body">
+                <canvas id="enrollChart" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-8">
+        <div class="card mb-3">
+            <div class="card-header">
+                <i class="bi bi-clock-history me-2"></i>Today's Operations
+            </div>
+            <div class="card-body">
+                <div class="row text-center g-3">
+                    <div class="col-6 col-md-3">
+                        <div class="display-6 text-success"><i class="bi bi-check-circle"></i></div>
+                        <div class="small text-muted-2">Students Present</div>
+                        <div class="fw-bold">{{ students_present_today|intcomma }}</div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="display-6 text-danger"><i class="bi bi-x-circle"></i></div>
+                        <div class="small text-muted-2">Students Absent</div>
+                        <div class="fw-bold">{{ students_absent_today|intcomma }}</div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="display-6 text-primary"><i class="bi bi-card-checklist"></i></div>
+                        <div class="small text-muted-2">Tests Today</div>
+                        <div class="fw-bold">{{ tests_today }}</div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="display-6 text-warning"><i class="bi bi-pencil-square"></i></div>
+                        <div class="small text-muted-2">Homework Today</div>
+                        <div class="fw-bold">{{ homework_today }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><i class="bi bi-exclamation-triangle me-2 text-warning"></i>Attention Required</div>
+            <div class="card-body p-0">
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-credit-card-2-front text-warning me-2"></i> Fee Defaulters</span>
+                        <span class="badge bg-soft-warning">{{ fee_defaulters }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-award text-info me-2"></i> Pending Term Results</span>
+                        <span class="badge bg-soft-info">{{ pending_results }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-pencil-square text-primary me-2"></i> Upcoming Homework</span>
+                        <span class="badge bg-soft-primary">{{ upcoming_homework }}</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card mb-3">
+            <div class="card-header"><i class="bi bi-cash-coin me-2 text-success"></i>Recent Payments</div>
+            <div class="card-body p-0">
+                {% if recent_payments %}
+                <ul class="list-group list-group-flush">
+                    {% for p in recent_payments %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="small fw-600">{{ p.challan.student.full_name }}</div>
+                            <div class="small text-muted-2">{{ p.payment_date }} · {{ p.get_method_display }}</div>
+                        </div>
+                        <span class="fw-bold text-success">{{ currency_symbol }}{{ p.amount|intcomma }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="empty-state p-3"><i class="bi bi-inbox"></i><p class="small">No recent payments.</p></div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><i class="bi bi-megaphone me-2"></i>Announcements</div>
+            <div class="card-body p-0">
+                {% if recent_announcements %}
+                <ul class="list-group list-group-flush">
+                    {% for a in recent_announcements %}
+                    <li class="list-group-item">
+                        <div class="small fw-600">{{ a.title|truncatewords:6 }}</div>
+                        <div class="small text-muted-2">{{ a.publish_date|date:"M d, Y" }}</div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="empty-state p-3"><i class="bi bi-inbox"></i></div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+    var feeCtx = document.getElementById('feeChart');
+    if (feeCtx && window.Chart) {
+        new Chart(feeCtx, {
+            type: 'line',
+            data: {
+                labels: {{ collection_labels_json|safe }},
+                datasets: [{
+                    label: 'Collection',
+                    data: {{ collection_values_json|safe }},
+                    borderColor: '#4f46e5',
+                    backgroundColor: 'rgba(79,70,229,.08)',
+                    fill: true,
+                    tension: .35,
+                    pointRadius: 4
+                }]
+            },
+            options: {
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true } }
+            }
+        });
+    }
+    var enrollCtx = document.getElementById('enrollChart');
+    if (enrollCtx && window.Chart) {
+        var enrollment = {{ enrollment_data_json|safe }};
+        new Chart(enrollCtx, {
+            type: 'bar',
+            data: {
+                labels: enrollment.map(function(e){return e.name;}),
+                datasets: [{
+                    label: 'Students',
+                    data: enrollment.map(function(e){return e.count;}),
+                    backgroundColor: '#4f46e5',
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                plugins: { legend: { display: false } },
+                scales: { x: { beginAtZero: true } }
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

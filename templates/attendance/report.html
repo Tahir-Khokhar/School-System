@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="h3 fw-bold mb-3">Attendance Report</h1>
+<div class="card mb-3"><div class="card-body"><form method="get" class="row g-2">
+<div class="col-md-4"><input type="text" name="q" class="form-control" placeholder="Student name or registration #" value="{{ request.GET.q }}"></div>
+<div class="col-md-3"><select name="class" class="form-select"><option value="">— All Classes —</option>{% for c in classes %}<option value="{{ c.pk }}" {% if request.GET.class == c.pk|stringformat:"s" %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></div>
+<div class="col-md-3"><input type="date" name="date" class="form-control" value="{{ request.GET.date }}"></div>
+<div class="col-md-2"><button class="btn btn-outline-primary w-100">Filter</button></div>
+</form></div></div>
+<div class="card"><div class="card-body p-0">{% if records %}<table class="table table-hover mb-0"><thead><tr><th>Student</th><th>Class</th><th>Date</th><th>Status</th><th>Marked By</th></tr></thead><tbody>{% for r in records %}<tr><td><a href="{% url 'students:student_detail' r.student_id %}">{{ r.student.full_name }}</a></td><td>{{ r.school_class.name }}</td><td>{{ r.date|date:"M d, Y" }}</td><td><span class="badge {% if r.status == 'present' %}bg-soft-success{% elif r.status == 'absent' %}bg-soft-danger{% elif r.status == 'late' %}bg-soft-warning{% else %}bg-soft-info{% endif %}">{{ r.get_status_display }}</span></td><td>{{ r.marked_by|default:"—" }}</td></tr>{% endfor %}</tbody></table>{% else %}<div class="empty-state"><i class="bi bi-clipboard-data"></i><p>No attendance records.</p></div>{% endif %}</div></div>
+{% endblock %}

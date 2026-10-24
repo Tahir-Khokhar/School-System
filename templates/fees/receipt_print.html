@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container my-4" style="max-width: 700px;">
+<div class="card">
+    <div class="card-header text-center bg-success text-white py-3">
+        <h2 class="h4 mb-0"><i class="bi bi-check-circle me-2"></i>Payment Receipt</h2>
+        <p class="small mb-0">{{ school_name|default:"School ERP" }}</p>
+    </div>
+    <div class="card-body">
+        <div class="text-center mb-3">
+            <div class="paid-stamp">PAID</div>
+        </div>
+        <div class="row mb-3">
+            <div class="col-6">
+                <p class="mb-0"><strong>Receipt #:</strong> {{ payment.receipt_no }}</p>
+                <p class="mb-0"><strong>Date:</strong> {{ payment.payment_date|date:"M d, Y" }}</p>
+                <p class="mb-0"><strong>Method:</strong> {{ payment.get_method_display }}</p>
+            </div>
+            <div class="col-6 text-end">
+                <p class="mb-0"><strong>Challan #:</strong> {{ challan.challan_no }}</p>
+                <p class="mb-0"><strong>Month:</strong> {{ challan.month|default:"—" }}</p>
+                <p class="mb-0"><strong>Academic Year:</strong> {{ challan.academic_year.name }}</p>
+            </div>
+        </div>
+        <hr>
+        <h6>Student Information</h6>
+        <p class="mb-1"><strong>Name:</strong> {{ challan.student.full_name }}</p>
+        <p class="mb-1"><strong>Registration:</strong> {{ challan.student.registration_no }}</p>
+        <p class="mb-3"><strong>Class:</strong> {{ challan.student.class_section_display }}</p>
+        <hr>
+        <table class="table table-bordered">
+            <thead><tr><th>Fee Type</th><th class="text-end">Amount</th></tr></thead>
+            <tbody>
+                {% for item in items %}
+                <tr><td>{{ item.fee_type.name }}</td><td class="text-end">{{ currency_symbol }}{{ item.amount|floatformat:0 }}</td></tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr><th>Total Challan Payable</th><th class="text-end">{{ currency_symbol }}{{ challan.total_payable|floatformat:0 }}</th></tr>
+                <tr><th>Total Paid (this receipt)</th><th class="text-end text-success h5">{{ currency_symbol }}{{ payment.amount|floatformat:0 }}</th></tr>
+                <tr><th>Balance Due</th><th class="text-end text-danger">{{ currency_symbol }}{{ challan.balance|floatformat:0 }}</th></tr>
+            </tfoot>
+        </table>
+        <p class="small text-muted mt-3">Recorded by: <strong>{{ payment.recorded_by|default:"System" }}</strong> on {{ payment.created_at|date:"M d, Y H:i" }}{% if payment.transaction_ref %} · Txn Ref: {{ payment.transaction_ref }}{% endif %}</p>
+    </div>
+</div>
+</div>
+{% endblock %}

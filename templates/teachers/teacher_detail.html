@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 fw-bold mb-0">{{ teacher.full_name }}</h1>
+    <div>
+        {% if perms.teachers.change_teacher %}
+        <a href="{% url 'teachers:teacher_edit' teacher.pk %}" class="btn btn-outline-primary btn-sm"><i class="bi bi-pencil me-1"></i>Edit</a>
+        {% endif %}
+        {% if request.user.can_view_payroll %}
+        <a href="{% url 'teachers:teacher_bank_info' teacher.pk %}" class="btn btn-outline-warning btn-sm"><i class="bi bi-bank me-1"></i>Bank Info</a>
+        {% endif %}
+    </div>
+</div>
+<div class="row g-3">
+    <div class="col-md-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <div class="avatar-sm mx-auto mb-3" style="width:80px;height:80px;font-size:2rem">{{ teacher.full_name|slice:":1"|upper }}</div>
+                <h2 class="h5 mb-1">{{ teacher.full_name }}</h2>
+                <p class="text-muted-2 small mb-2">{{ teacher.employee_id }}</p>
+                <span class="badge {% if teacher.status == 'active' %}badge-paid{% else %}badge-draft{% endif %}">{{ teacher.get_status_display }}</span>
+                <hr>
+                <p class="small mb-1"><strong>Designation:</strong> {{ teacher.designation|default:"—" }}</p>
+                <p class="small mb-1"><strong>Joining:</strong> {{ teacher.joining_date|date:"M d, Y"|default:"—" }}</p>
+                <p class="small mb-1"><strong>Phone:</strong> {{ teacher.contact_phone|default:"—" }}</p>
+                <p class="small mb-0"><strong>Salary:</strong> {{ currency_symbol }}{{ teacher.basic_salary|intcomma }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <div class="card mb-3">
+            <div class="card-header">Personal Information</div>
+            <div class="card-body p-0">
+                <table class="table mb-0">
+                    <tr><th class="w-25">Father Name</th><td>{{ teacher.father_name|default:"—" }}</td></tr>
+                    <tr><th>CNIC</th><td>{{ teacher.cnic|default:"—" }}</td></tr>
+                    <tr><th>Date of Birth</th><td>{{ teacher.date_of_birth|date:"M d, Y"|default:"—" }}</td></tr>
+                    <tr><th>Qualification</th><td>{{ teacher.qualification|default:"—" }}</td></tr>
+                    <tr><th>Experience</th><td>{{ teacher.experience_years }} years</td></tr>
+                    <tr><th>Email</th><td>{{ teacher.email|default:"—" }}</td></tr>
+                    <tr><th>Address</th><td>{{ teacher.address|default:"—" }}</td></tr>
+                </table>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">Assignments</div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <h6>Classes</h6>
+                        {% for c in teacher.classes.all %}<span class="quick-chip">{{ c.name }}</span> {% empty %}<span class="text-muted-2 small">No classes</span>{% endfor %}
+                    </div>
+                    <div class="col-md-4">
+                        <h6>Sections</h6>
+                        {% for s in teacher.sections.all %}<span class="quick-chip">{{ s.school_class.name }}-{{ s.name }}</span> {% empty %}<span class="text-muted-2 small">No sections</span>{% endfor %}
+                    </div>
+                    <div class="col-md-4">
+                        <h6>Subjects</h6>
+                        {% for s in teacher.subjects.all %}<span class="quick-chip">{{ s.name }}</span> {% empty %}<span class="text-muted-2 small">No subjects</span>{% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+{% block content %}
+<h1 class="h3 fw-bold mb-3">Bank Information — {{ teacher.full_name }}</h1>
+<div class="alert alert-warning"><i class="bi bi-shield-lock me-1"></i> This information is sensitive. Only authorized roles should view or modify it.</div>
+<div class="card"><div class="card-body">
+    <form method="post">
+        {% csrf_token %}
+        {{ form|crispy }}
+        <button class="btn btn-primary mt-3"><i class="bi bi-check-lg me-1"></i>Save Bank Information</button>
+        <a href="{% url 'teachers:teacher_detail' teacher.pk %}" class="btn btn-outline-secondary mt-3">Cancel</a>
+    </form>
+</div></div>
+{% endblock %}

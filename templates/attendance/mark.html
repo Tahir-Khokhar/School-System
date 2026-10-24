@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="h3 fw-bold mb-3"><i class="bi bi-check2-square me-2 text-primary"></i>Mark Daily Attendance</h1>
+<div class="card mb-3"><div class="card-body"><form method="get" class="row g-2">{% for field in class_filter_form %}{% if field.name != 'subject' %}<div class="col-md-3">{{ field.label_tag }}{{ field }}</div>{% endif %}{% endfor %}<div class="col-md-1 align-self-end"><button class="btn btn-outline-primary w-100"><i class="bi bi-search"></i></button></div></form></div></div>
+{% if formset %}
+<div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span>Students — {{ selected_class.name }} on {{ selected_date }}</span><button type="button" class="btn btn-sm btn-outline-success" onclick="document.querySelectorAll('select[name^="form-"][name$="-status"]').forEach(function(s){s.value="present";})"><i class="bi bi-check2-all me-1"></i>Mark All Present</button></div>
+<div class="card-body">
+<form method="post">{% csrf_token %}{{ formset.management_form }}
+<input type="hidden" name="school_class" value="{{ selected_class.pk }}">
+<input type="hidden" name="section" value="{{ request.GET.section }}">
+<input type="hidden" name="date" value="{{ selected_date }}">
+<input type="hidden" name="subject" value="{{ selected_subject_id }}">
+<table class="table">
+<thead><tr><th>Student</th><th>Status</th><th>Notes</th></tr></thead>
+<tbody>
+{% for form in formset %}
+<tr><td>{{ form.student_name }}{{ form.student_id }}</td><td>{{ form.status }}</td><td>{{ form.notes }}</td></tr>
+{% endfor %}
+</tbody>
+</table>
+<button class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Save Attendance</button>
+</form>
+</div></div>
+{% else %}
+<div class="empty-state"><i class="bi bi-info-circle"></i><p>Select a class and date above to mark attendance.</p></div>
+{% endif %}
+{% endblock %}
