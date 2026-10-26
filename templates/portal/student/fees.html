@@ -25,7 +25,7 @@
         <td class="text-end">
           <a href="{% url 'fees:challan_detail' c.pk %}" class="btn btn-sm btn-outline-success"><i class="bi bi-eye"></i></a>
           <a href="{% url 'fees:challan_pdf' c.pk %}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-file-pdf"></i></a>
-          {% if c.status != 'paid' %}<a href="{% url 'fees:online_pay' c.pk %}" class="btn btn-sm btn-success" style="background:var(--aps-green);border-color:var(--aps-green);"><i class="bi bi-credit-card me-1"></i>Pay</a>{% endif %}
+          {% if c.status != 'paid' %}<form method="post" action="{% url 'fees:online_pay' c.pk %}" style="display:inline;">{% csrf_token %}<button type="submit" class="btn btn-sm btn-success" style="background:var(--aps-green);border-color:var(--aps-green);"><i class="bi bi-credit-card me-1"></i>Pay</button></form>{% endif %}
         </td>
       </tr>
       {% endfor %}
