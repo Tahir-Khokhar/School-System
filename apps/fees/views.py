@@ -437,7 +437,7 @@ def stripe_webhook(request):
         if challan.status != FeeChallan.Status.PAID:
             FeeService.record_payment(
                 challan=challan,
-                amount=challan.balance,
+                amount=meta.get("amount", challan.total_payable),
                 method=meta.get("method", "online"),
                 user=None,
                 transaction_ref=meta.get("transaction_ref", ""),
@@ -464,6 +464,7 @@ def stripe_webhook(request):
     return HttpResponse("OK")
 
 
+@method_decorator(csrf_exempt, name="dispatch")
 @method_decorator(ratelimit(key="ip", rate="10/m", method="POST", block=True), name="post")
 class JazzCashReturnView(View):
     """JazzCash redirects the browser back here with a signed POST.
@@ -486,7 +487,7 @@ class JazzCashReturnView(View):
         if is_successful and challan.status != FeeChallan.Status.PAID:
             FeeService.record_payment(
                 challan=challan,
-                amount=challan.balance,
+                amount=meta.get("amount", challan.total_payable),
                 method=meta.get("method", "online"),
                 user=request.user if request.user.is_authenticated else None,
                 transaction_ref=meta.get("transaction_ref", ""),
