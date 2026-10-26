@@ -66,7 +66,7 @@ class FeeChallan(TimeStampedModel):
         CANCELLED = "cancelled", "Cancelled"
 
     challan_no = models.CharField(max_length=20, unique=True, db_index=True, editable=False)
-    student = models.ForeignKey(Student, on_delete=models.PROTECT, related_name="fee_challans")
+    student = models.ForeignKey(Student, on_delete=models.PROTECT, related_name="fee_challans", null=True, blank=True)
     academic_year = models.ForeignKey(AcademicYear, on_delete=models.PROTECT, related_name="fee_challans")
     month = models.CharField(max_length=20, blank=True, help_text="e.g. October 2026")
     due_date = models.DateField(null=True, blank=True)
@@ -74,6 +74,7 @@ class FeeChallan(TimeStampedModel):
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.UNPAID, db_index=True)
     is_admission_challan = models.BooleanField(default=False)
     notes = models.TextField(blank=True)
+    late_fee_charged = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL, null=True, blank=True,
