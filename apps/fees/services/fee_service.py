@@ -37,10 +37,7 @@ class FeeService:
 
         # If already paid, check if late fee was charged at payment time
         if challan.status == FeeChallan.Status.PAID:
-            # Late fee was already included in the total that was paid
-            # Return 0 because it's already baked into the payment
-            return Decimal("0")
-
+            return Decimal(getattr(challan, "late_fee_charged", 0) or 0)
         today = timezone.now().date()
         if today <= challan.due_date:
             return Decimal("0")
@@ -215,6 +212,8 @@ class FeeService:
             notes=notes,
         )
 
+        challan.late_fee_charged = cls.calculate_late_fee(challan)
+        challan.save(update_fields=["late_fee_charged"])
         cls.update_challan_status(challan)
         return payment
 
