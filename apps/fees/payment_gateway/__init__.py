@@ -187,6 +187,7 @@ class StripeGateway(PaymentGateway):
             "challan_no": challan_no,
             "transaction_ref": session.id,
             "method": "card",
+            "amount": (session.get("amount_total") or 0) / 100,
         }
 
 
@@ -208,8 +209,8 @@ class JazzCashGateway(PaymentGateway):
     def _secure_hash(self, sorted_fields: list) -> str:
         """JazzCash uses an MD5 HMAC over '&' -joined sorted field values, prefixed
         with the integrity salt. This is the official spec from JazzCash docs."""
-        data = self.salt + "&" + "&".join(str(v) for v in sorted_fields)
-        return hashlib.md5(data.encode("utf-8")).hexdigest().upper()
+        data = "&".join(str(v) for v in sorted_fields)
+        return hmac.new(self.salt.encode("utf-8"), data.encode("utf-8"), hashlib.sha256).hexdigest().upper()
 
     def create_checkout(self, challan: FeeChallan, request) -> dict:
         # JazzCash expects a form POST from the browser, so we return the API URL
@@ -261,12 +262,13 @@ class JazzCashGateway(PaymentGateway):
         if not hmac.compare_digest(received_hash, expected_hash):
             return False, {}
         # Check payment status
-        if post.get("pp_ResponseCode") not in ("000", "121"):  # 000 = success, 121 = success-pending
+        if post.get("pp_ResponseCode") != "000":
             return False, {}
         return True, {
             "challan_no": challan_no,
             "transaction_ref": post.get("pp_TxnRefNo", ""),
             "method": "online",
+            "amount": int(post.get("pp_Amount", "0") or "0") / 100,
         }
 
 
