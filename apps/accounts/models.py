@@ -2,9 +2,8 @@
 School ERP — accounts app.
 Custom user model with role, groups, and helper role-check properties.
 """
-from django.contrib.auth.models import AbstractUser, Group, Permission
+from django.contrib.auth.models import AbstractUser, Group
 from django.db import models
-from django.urls import reverse
 
 
 class User(AbstractUser):
@@ -74,16 +73,52 @@ class User(AbstractUser):
             self.Role.SUPER_ADMIN, self.Role.ADMIN, self.Role.ACCOUNTANT,
         } or self.is_superuser
 
-    def get_role_display(self):
-        return dict(self.Role.choices).get(self.role, self.role)
+    # ---- group sync helpers ----
+    @staticmethod
+    def role_to_group_name(role):
+        """Map a role value to its canonical group name.
+
+        Note: `str.replace("_", " ").title()` on `"hr_payroll"` yields
+        `"Hr Payroll"`, which does NOT match the ROLE_PERMISSIONS key
+        `"HR/Payroll Officer"`. We special-case that one so groups and
+        permissions line up.
+        """
+        return {
+            User.Role.HR_PAYROLL: "HR/Payroll Officer",
+        }.get(role) or role.replace("_", " ").title()
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
-        # Sync user to their role group
-        if self.role:
-            group_name = self.role.replace("_", " ").title()
-            grp, _ = Group.objects.get_or_create(name=group_name)
-            self.groups.add(grp)
+        # FIX: adding to a M2M inside save() is a common source of bugs —
+        # (a) it fires on every save (including unrelated field updates),
+        # (b) it silently breaks during loaddata / migrations / fixtures
+        #     because Group may not exist yet,
+        # (c) it triggers an extra query on every save.
+        # Guard it: only sync when the role actually changed, and never
+        # during fixture loading.
+        if not self.role:
+            return
+
+        # Don't run during `loaddata` — `raw` is True in that case.
+        if kwargs.get("raw"):
+            return
+
+        # Skip M2M sync on brand-new rows before pk exists (can't reach
+        # here because super().save() already assigned a pk, but keeping
+        # the guard documents intent). Also skip if this is an update that
+        # did not touch `role`.
+        if not self._state.adding:
+            prev = (
+                User.objects.filter(pk=self.pk)
+                .values_list("role", flat=True)
+                .first()
+            )
+            if prev == self.role:
+                return
+
+        group_name = self.role_to_group_name(self.role)
+        grp, _ = Group.objects.get_or_create(name=group_name)
+        self.groups.add(grp)
 
 
 # Groups map cleanly to roles
