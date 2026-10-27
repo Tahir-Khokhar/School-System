@@ -1,182 +1,161 @@
-"""Attendance views — daily marking and reports."""
-from datetime import datetime
-
+from datetime import datetime, timedelta
 from django.contrib import messages
+from apps.accounts.mixins import StaffRequiredMixin
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
-from django.db.models import Q
-from django.shortcuts import get_object_or_404, redirect
+from django.core.exceptions import PermissionDenied, ValidationError as DjangoValidationError
+from django.shortcuts import redirect, get_object_or_404
 from django.urls import reverse
+from django.utils import timezone
 from django.views.generic import TemplateView, ListView, FormView
 
-from apps.accounts.mixins import StaffRequiredMixin
 from apps.common.models import SchoolClass, Section, Subject, AcademicYear
 from apps.students.models import Student
 from .models import Attendance, AttendanceService
 from .forms import AttendanceMarkFormSet, AttendanceFilterForm
 
 
-def _parse_date(raw):
-    """Return a date or None — never raise on user input."""
-    if not raw:
-        return None
-    try:
-        return datetime.strptime(raw, "%Y-%m-%d").date()
-    except (TypeError, ValueError):
-        return None
-
-
-def _safe_int(raw):
-    """Return int or None — never raise on user input."""
-    if raw in (None, "", "None"):
-        return None
-    try:
-        return int(raw)
-    except (TypeError, ValueError):
-        return None
-
-
-class AttendanceMarkView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
+class AttendanceMarkView(StaffRequiredMixin, PermissionRequiredMixin, TemplateView):
     template_name = "attendance/mark.html"
     permission_required = "attendance.add_attendance"
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx["class_filter_form"] = AttendanceFilterForm(self.request.GET or None)
-        ctx["formset"] = kwargs.get("formset")  # may be None on first GET
+        ctx["formset"] = kwargs.get("formset")
         ctx["breadcrumbs"] = [{"title": "Mark Attendance"}]
-
-        class_id = _safe_int(self.request.GET.get("school_class"))
-        if not class_id:
-            return ctx
-
-        cls = get_object_or_404(SchoolClass, pk=class_id)
-
-        # FIX #1 — validate the section belongs to this class. Otherwise a
-        # user can pass ?school_class=1&section=999 and the initial formset
-        # ends up empty (or worse, with wrong students once
-        # `current_section_id` matches another class's section).
-        section_id = _safe_int(self.request.GET.get("section"))
-        if section_id is not None:
-            if not Section.objects.filter(pk=section_id, school_class=cls).exists():
-                section_id = None
-
-        date = _parse_date(self.request.GET.get("date"))
-        subject_id = _safe_int(self.request.GET.get("subject"))
-
-        ctx["selected_class"] = cls
-        ctx["selected_date"] = date.isoformat() if date else ""
-        ctx["selected_subject_id"] = subject_id or ""
-
-        students_qs = Student.objects.filter(current_class=cls)
-        if section_id is not None:
-            students_qs = students_qs.filter(current_section_id=section_id)
-
-        # FIX #2 — attach the formset to the view instance so `post()` can
-        # reuse it if needed, and pass initial only when we're NOT re-rendering
-        # a failed POST (kwargs["formset"] would already be set).
-        if "formset" not in kwargs:
-            initial = [
-                {
+        students_qs = None
+        if "school_class" in self.request.GET and self.request.GET.get("school_class"):
+            cls = get_object_or_404(SchoolClass, pk=self.request.GET.get("school_class"))
+            sec_id = self.request.GET.get("section")
+            date = self.request.GET.get("date")
+            sub_id = self.request.GET.get("subject")
+            ctx["selected_class"] = cls
+            ctx["selected_date"] = date
+            ctx["selected_subject_id"] = sub_id
+            students_qs = Student.objects.filter(current_class=cls)
+            if sec_id:
+                students_qs = students_qs.filter(current_section_id=sec_id)
+            initial = []
+            for s in students_qs:
+                initial.append({
                     "student_id": s.pk,
                     "student_name": s.full_name,
                     "status": "present",
-                }
-                for s in students_qs
-            ]
+                })
             ctx["formset"] = AttendanceMarkFormSet(initial=initial)
         return ctx
 
+    def _validate_request(self, request):
+        """Validate date + class_id + section_id + student_ids before any DB writes.
+
+        Returns (ok: bool, error_msg: str, parsed: dict).
+        """
+        class_id = request.POST.get("school_class")
+        section_id = request.POST.get("section")
+        date_str = request.POST.get("date")
+        subject_id = request.POST.get("subject") or None
+
+        # Required fields.
+        if not class_id or not date_str:
+            return False, "Class and date are required.", {}
+        # Parse date — reject retroactive tampering beyond a sensible window.
+        try:
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            return False, "Invalid date format.", {}
+        today = timezone.now().date()
+        # Block marking attendance for > 7 days in the future or > 30 days in the past.
+        if date_obj > today + timedelta(days=7):
+            return False, "Cannot mark attendance more than 7 days in the future.", {}
+        if date_obj < today - timedelta(days=30):
+            return False, "Cannot mark attendance more than 30 days in the past.", {}
+
+        # Verify the class + section actually exist + match.
+        cls = get_object_or_404(SchoolClass, pk=class_id)
+        sec = Section.objects.filter(pk=section_id).first() if section_id else None
+        if section_id and sec and sec.school_class_id != cls.pk:
+            return False, "Section does not belong to the selected class.", {}
+
+        return True, "", {
+            "class": cls, "section": sec, "date_obj": date_obj, "subject_id": subject_id,
+        }
+
     def post(self, request, *args, **kwargs):
         formset = AttendanceMarkFormSet(request.POST)
-
-        # FIX #3 — parse and validate filters BEFORE the formset, so the
-        # context on a failed render still has the right class/date/subject.
-        class_id = _safe_int(request.POST.get("school_class"))
-        section_id = _safe_int(request.POST.get("section"))
-        subject_id = _safe_int(request.POST.get("subject"))
-        date_obj = _parse_date(request.POST.get("date"))
-
-        if not class_id:
-            messages.error(request, "Please choose a class before submitting.")
-            return self.render_to_response(
-                self.get_context_data(formset=formset)
-            )
-
-        if date_obj is None:
-            messages.error(request, "Invalid date — use YYYY-MM-DD.")
-            return self.render_to_response(
-                self.get_context_data(formset=formset)
-            )
-
-        # FIX #4 — verify class exists and section belongs to it.
-        cls = get_object_or_404(SchoolClass, pk=class_id)
-        if section_id is not None and not Section.objects.filter(
-            pk=section_id, school_class=cls
-        ).exists():
-            messages.error(request, "Selected section does not belong to the chosen class.")
-            return self.render_to_response(
-                self.get_context_data(formset=formset)
-            )
-
         if not formset.is_valid():
             messages.error(request, "There were errors in the form.")
-            return self.render_to_response(
-                self.get_context_data(formset=formset)
-            )
+            return self.render_to_response(self.get_context_data(formset=formset))
 
-        # FIX #5 — reject students who aren't in the selected class. Without
-        # this, a crafted POST can mark attendance for a student in another
-        # class (or another school), polluting their record.
-        allowed_student_ids = set(
-            Student.objects
-            .filter(current_class=cls)
-            .values_list("pk", flat=True)
+        # Validate date / class / section BEFORE any DB writes.
+        ok, reason, parsed = self._validate_request(request)
+        if not ok:
+            messages.error(request, reason)
+            return self.render_to_response(self.get_context_data(formset=formset))
+
+        # Build records — but verify each student_id is actually enrolled in
+        # the requested class+section (don't trust POST blindly).
+        valid_student_ids = set(
+            Student.objects.filter(
+                current_class=parsed["class"],
+                current_section=parsed["section"],
+                status=Student.Status.ACTIVE,
+            ).values_list("pk", flat=True)
+        ) if parsed["section"] else set(
+            Student.objects.filter(
+                current_class=parsed["class"],
+                status=Student.Status.ACTIVE,
+            ).values_list("pk", flat=True)
         )
 
         records = []
+        rejected = 0
         for form in formset:
-            cd = form.cleaned_data
-            if not cd:
+            if not form.cleaned_data:
                 continue
-            sid = cd.get("student_id")
-            if sid not in allowed_student_ids:
-                messages.error(
-                    request,
-                    f"Student #{sid} is not in the selected class; attendance not saved.",
-                )
-                return self.render_to_response(
-                    self.get_context_data(formset=formset)
-                )
+            sid = form.cleaned_data.get("student_id")
+            status = form.cleaned_data.get("status")
+            notes = form.cleaned_data.get("notes", "")
+            # VALIDATE: student must actually be in this class+section.
+            if sid not in valid_student_ids:
+                rejected += 1
+                continue
+            # VALIDATE: status must be a known choice.
+            valid_statuses = {s for s, _ in Attendance.Status.choices}
+            if status not in valid_statuses:
+                rejected += 1
+                continue
             records.append({
-                "student_id": sid,
-                "status": cd["status"],
-                "notes": cd.get("notes", "") or "",
+                "student_id": sid, "status": status, "notes": notes,
             })
 
+        if rejected:
+            messages.warning(
+                request,
+                f"{rejected} record(s) rejected (student not in this class or invalid status).",
+            )
+
         if not records:
-            messages.warning(request, "No students to mark.")
+            messages.error(request, "No valid attendance records to save.")
             return redirect("attendance:daily_mark")
 
         try:
             n = AttendanceService.mark_attendance(
-                school_class_id=class_id,
-                section_id=section_id,
-                date=date_obj,
-                subject_id=subject_id,  # already None if blank
-                records=records,
-                user=request.user,
+                school_class_id=parsed["class"].pk,
+                section_id=parsed["section"].pk if parsed["section"] else None,
+                date=parsed["date_obj"],
+                subject_id=parsed["subject_id"] or None,
+                records=records, user=request.user,
             )
-        except Exception:
-            import logging
-            logging.getLogger(__name__).exception(
-                "Attendance marking failed for class %s on %s", class_id, date_obj
-            )
-            messages.error(request, "Could not save attendance; please retry.")
-            return self.render_to_response(
-                self.get_context_data(formset=formset)
-            )
-
-        messages.success(request, f"Attendance marked for {n} student(s).")
+            messages.success(request, f"Attendance marked for {n} student(s).")
+        except PermissionError as e:
+            # Class-teacher rule blocked this submission.
+            messages.error(request, str(e))
+        except ValueError as e:
+            messages.error(request, str(e))
+        # NOTE: deliberately NO bare `except Exception` — that would swallow
+        # real bugs (e.g. IntegrityError on duplicate unique keys) and turn
+        # them into silent 200-OK responses. Let those bubble up to Django's
+        # 500 page so they're logged + visible.
         return redirect("attendance:daily_mark")
 
 
@@ -186,26 +165,23 @@ class AttendanceReportView(StaffRequiredMixin, ListView):
     paginate_by = 50
 
     def get_queryset(self):
-        qs = Attendance.objects.select_related(
-            "student", "school_class", "academic_year"
-        )
-
-        class_id = _safe_int(self.request.GET.get("class"))
-        if class_id is not None:
+        qs = Attendance.objects.select_related("student", "school_class", "academic_year")
+        class_id = self.request.GET.get("class")
+        if class_id:
             qs = qs.filter(school_class_id=class_id)
-
-        date_obj = _parse_date(self.request.GET.get("date"))
-        if date_obj is not None:
-            qs = qs.filter(date=date_obj)
-
-        q = (self.request.GET.get("q") or "").strip()[:100]
-        if q:
-            # FIX #6 — Q() instead of `qs.filter(...) | qs.filter(...)`.
-            # `|` drops `select_related` and can duplicate/UNION rows.
-            qs = qs.filter(
-                Q(student__full_name__icontains=q)
-                | Q(student__registration_no__icontains=q)
-            )
+        date = self.request.GET.get("date")
+        if date:
+            try:
+                qs = qs.filter(date=datetime.strptime(date, "%Y-%m-%d").date())
+            except ValueError:
+                # Invalid date format in query string — ignore the filter
+                # rather than crashing the whole report. Other filters
+                # (class, q) still apply.
+                pass
+        student_q = self.request.GET.get("q")
+        if student_q:
+            qs = (qs.filter(student__full_name__icontains=student_q)
+                  | qs.filter(student__registration_no__icontains=student_q)).distinct()
         return qs
 
     def get_context_data(self, **kwargs):
