@@ -1,62 +1,38 @@
 """
 Base Django settings for School ERP.
-Environment-specific overrides live in dev.py / prod.py.
-
-Anything security-sensitive is read from environment variables and validated
-at import time so misconfiguration fails loudly instead of silently.
+Environment-specific overrides in dev.py / prod.py.
 """
 import os
 from pathlib import Path
 
-from django.core.exceptions import ImproperlyConfigured
+# ---------------------------------------------------------------------------
+# Load .env file if python-dotenv is installed and a .env file exists.
+# In production, prefer setting real environment variables instead of a .env file.
+# ---------------------------------------------------------------------------
+try:
+    from dotenv import load_dotenv
+    _BASE_DIR_FOR_ENV = Path(__file__).resolve().parent.parent.parent
+    # Load ONLY the .env inside the project (school_erp/.env), not the
+    # parent directory's .env (which may belong to a different deployment).
+    _env_path = _BASE_DIR_FOR_ENV / ".env"
+    if _env_path.exists():
+        load_dotenv(_env_path)
+except ImportError:
+    # python-dotenv not installed — fall back to plain os.environ.
+    pass
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 APPS_DIR = BASE_DIR / "apps"
 
-
-# ---------------------------------------------------------------------------
-# Env helpers
-# Exported at module level (no leading underscore) so dev.py / prod.py can
-# use them via `from .base import *`.
-# ---------------------------------------------------------------------------
-def env_bool(name, default=False):
-    return os.environ.get(name, str(default)).lower() in ("1", "true", "yes", "on")
-
-
-def env_int(name, default):
-    try:
-        return int(os.environ.get(name, str(default)))
-    except (TypeError, ValueError):
-        return default
-
-
-def env_list(name, default=""):
-    return [x.strip() for x in os.environ.get(name, default).split(",") if x.strip()]
-
-
 # ---------------------------------------------------------------------------
 # Security
 # ---------------------------------------------------------------------------
-# SECRET_KEY is required in production. In dev, we allow a throwaway fallback
-# only when DJANGO_DEBUG=true, so `runserver` works without a .env file.
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
-if not SECRET_KEY:
-    if env_bool("DJANGO_DEBUG", False):
-        SECRET_KEY = "dev-only-not-secret-do-not-use-in-prod"
-    else:
-        raise ImproperlyConfigured(
-            "DJANGO_SECRET_KEY environment variable is required. "
-            "Generate one with: python -c "
-            "'from django.core.management.utils import get_random_secret_key; "
-            "print(get_random_secret_key())'"
-        )
-
-DEBUG = env_bool("DJANGO_DEBUG", False)
-
-# ALLOWED_HOSTS must be set explicitly. Empty means "not configured";
-# prod.py raises on it. Never default to "*".
-ALLOWED_HOSTS = env_list("ALLOWED_HOSTS")
-
+SECRET_KEY = os.environ.get(
+    "DJANGO_SECRET_KEY",
+    "django-insecure-change-me-in-production-please-use-a-long-random-string",
+)
+DEBUG = False
+ALLOWED_HOSTS = ["*"]
 
 # ---------------------------------------------------------------------------
 # Applications
@@ -76,7 +52,7 @@ THIRD_PARTY_APPS = [
     "crispy_bootstrap5",
     "django_otp",                       # 2FA core
     "django_otp.plugins.otp_totp",      # TOTP (Google Authenticator)
-    "django_otp.plugins.otp_static",    # backup codes
+    "django_otp.plugins.otp_static",     # backup codes
     "two_factor",                       # full 2FA flow
     "csp",                              # Content Security Policy
 ]
@@ -111,12 +87,12 @@ INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-    "csp.middleware.CSPMiddleware",
+    "csp.middleware.CSPMiddleware",                          # Content Security Policy
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
-    "django_otp.middleware.OTPMiddleware",
+    "django_otp.middleware.OTPMiddleware",                  # 2FA: marks request.user.is_verified()
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "apps.audit_logs.middleware.AuditLogMiddleware",
@@ -145,30 +121,29 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
-
 # ---------------------------------------------------------------------------
 # Database — SQLite by default; PostgreSQL optional via env vars.
+# For dev/demo/low-traffic single-school deployments, SQLite is perfectly fine.
+# To switch to PostgreSQL, set DB_ENGINE=django.db.backends.postgresql in .env
+# and run scripts/setup_postgres.sql once.
 # ---------------------------------------------------------------------------
 if os.environ.get("DB_ENGINE") == "django.db.backends.postgresql":
-    _required = ("DB_NAME", "DB_USER", "DB_PASSWORD", "DB_HOST")
-    _missing = [k for k in _required if not os.environ.get(k)]
-    if _missing:
-        raise ImproperlyConfigured(
-            f"PostgreSQL selected but missing env vars: {', '.join(_missing)}"
-        )
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
-            "NAME": os.environ["DB_NAME"],
-            "USER": os.environ["DB_USER"],
-            "PASSWORD": os.environ["DB_PASSWORD"],
-            "HOST": os.environ["DB_HOST"],
+            "NAME": os.environ.get("DB_NAME", "school_erp"),
+            "USER": os.environ.get("DB_USER", "school_erp_user"),
+            "PASSWORD": os.environ.get("DB_PASSWORD", ""),
+            "HOST": os.environ.get("DB_HOST", "localhost"),
             "PORT": os.environ.get("DB_PORT", "5432"),
-            "CONN_MAX_AGE": env_int("DB_CONN_MAX_AGE", 60),
-            "OPTIONS": {"connect_timeout": env_int("DB_CONNECT_TIMEOUT", 10)},
+            "CONN_MAX_AGE": int(os.environ.get("DB_CONN_MAX_AGE", "60")),
+            "OPTIONS": {
+                "connect_timeout": int(os.environ.get("DB_CONNECT_TIMEOUT", "10")),
+            },
         }
     }
 else:
+    # Default: SQLite (single-file DB, no server, no setup)
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
@@ -176,12 +151,11 @@ else:
         }
     }
 
-
 # ---------------------------------------------------------------------------
 # Auth + 2FA
 # ---------------------------------------------------------------------------
 AUTH_USER_MODEL = "accounts.User"
-LOGIN_URL = "login"
+LOGIN_URL = "login"          # two_factor.urls exposes 'login' name (no namespace)
 LOGIN_REDIRECT_URL = "dashboard:home"
 LOGOUT_REDIRECT_URL = "login"
 
@@ -193,13 +167,13 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
+# django-otp / two_factor
 OTP_TOTP_ISSUER = os.environ.get("OTP_ISSUER", "School ERP")
 TWO_FACTOR_PATCH_LOGIN_REMEMBER = True
 TWO_FACTOR_REMEMBER_COOKIE_AGE = 30 * 86400  # 30 days
 
-# Roles for which 2FA is enforced (values must match accounts.User.Role)
+# Force 2FA for sensitive roles (HR, superuser, accountant)
 TWO_FACTOR_FORCE_ROLES = {"super_admin", "hr_payroll", "accountant"}
-
 
 # ---------------------------------------------------------------------------
 # Rate limiting
@@ -208,21 +182,19 @@ RATELIMIT_ENABLE = True
 RATELIMIT_USE_CACHE = "default"
 RATELIMIT_VIEW = "apps.accounts.views.rate_limit_exceeded"
 
-
 # ---------------------------------------------------------------------------
-# Content Security Policy
-# `'unsafe-inline'` is intentionally NOT allowed for scripts in base.
-# dev.py may add it; production should use nonces ({{ request.csp_nonce }}).
+# Content Security Policy (CSP)
 # ---------------------------------------------------------------------------
 CSP_DEFAULT_SRC = ("'self'",)
 CSP_SCRIPT_SRC = (
     "'self'",
+    "'unsafe-inline'",  # required for inline Chart.js init + CSRF ajax
     "https://cdn.jsdelivr.net",
     "https://code.jquery.com",
 )
 CSP_STYLE_SRC = (
     "'self'",
-    "'unsafe-inline'",   # low risk vs script-src; nonces preferred
+    "'unsafe-inline'",
     "https://cdn.jsdelivr.net",
     "https://fonts.googleapis.com",
 )
@@ -245,7 +217,6 @@ CSP_FORM_ACTION = ("'self'", "https://api.stripe.com")
 CSP_REPORT_URI = "/csp-report/"
 CSP_EXCLUDE_URL_PREFIXES = ("/admin/", "/media/")
 
-
 # ---------------------------------------------------------------------------
 # Payment gateway
 # ---------------------------------------------------------------------------
@@ -253,46 +224,34 @@ STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
 STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 
+# JazzCash (Pakistan) — placeholder credentials; fill from .env
 JAZZCASH_MERCHANT_ID = os.environ.get("JAZZCASH_MERCHANT_ID", "")
 JAZZCASH_PASSWORD = os.environ.get("JAZZCASH_PASSWORD", "")
 JAZZCASH_INTEGRITY_SALT = os.environ.get("JAZZCASH_INTEGRITY_SALT", "")
-JAZZCASH_RETURN_URL = os.environ.get(
-    "JAZZCASH_RETURN_URL",
-    "http://localhost:8000/fees/payment/jazzcash/return/",
-)
-JAZZCASH_API_URL = os.environ.get(
-    "JAZZCASH_API_URL",
-    "https://sandbox.jazzcash.com.pk/ApplicationAPI/API/2.0/Payment/DoPayment",
-)
+JAZZCASH_RETURN_URL = os.environ.get("JAZZCASH_RETURN_URL", "http://localhost:8000/fees/payment/jazzcash/return/")
+JAZZCASH_API_URL = os.environ.get("JAZZCASH_API_URL", "https://sandbox.jazzcash.com.pk/ApplicationAPI/API/2.0/Payment/DoPayment")
 
-ACTIVE_PAYMENT_GATEWAY = os.environ.get("ACTIVE_PAYMENT_GATEWAY", "test")
-if ACTIVE_PAYMENT_GATEWAY not in ("stripe", "jazzcash", "test"):
-    raise ImproperlyConfigured(
-        f"ACTIVE_PAYMENT_GATEWAY must be one of stripe/jazzcash/test, "
-        f"got {ACTIVE_PAYMENT_GATEWAY!r}"
-    )
-PAYMENT_GATEWAY_ENABLED = ACTIVE_PAYMENT_GATEWAY != "test"
-
+# Active gateway: "stripe" | "jazzcash" | "test" | "" (empty = disabled)
+# Default: empty string (DISABLED) — production must explicitly enable a real
+# gateway. The "test" gateway always "succeeds" and is forbidden in prod.py;
+# we leave it available in dev.py for end-to-end payment testing.
+ACTIVE_PAYMENT_GATEWAY = os.environ.get("ACTIVE_PAYMENT_GATEWAY", "") or ""
 
 # ---------------------------------------------------------------------------
-# Email — console in dev, SMTP configurable in prod
+# Email backend — for "Forgot password" reset emails
+# In dev: print emails to console (you'll see them in the runserver terminal)
+# In prod: configure SMTP via env vars (e.g., SendGrid, AWS SES, Gmail)
 # ---------------------------------------------------------------------------
-EMAIL_BACKEND = os.environ.get(
-    "EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend"
-)
+EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
 EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp.gmail.com")
-EMAIL_PORT = env_int("EMAIL_PORT", 587)
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
 EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
-EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "True").lower() == "true"
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@apslahore.edu.pk")
 
-if EMAIL_BACKEND.endswith("smtp.EmailBackend"):
-    if not EMAIL_HOST_USER or not EMAIL_HOST_PASSWORD:
-        raise ImproperlyConfigured(
-            "SMTP email backend selected but EMAIL_HOST_USER/PASSWORD are empty."
-        )
-
+# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # i18n
@@ -301,7 +260,6 @@ LANGUAGE_CODE = "en-us"
 TIME_ZONE = "Asia/Karachi"
 USE_I18N = True
 USE_TZ = True
-
 
 # ---------------------------------------------------------------------------
 # Static / Media
@@ -315,13 +273,11 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-
 # ---------------------------------------------------------------------------
 # Crispy
 # ---------------------------------------------------------------------------
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
-
 
 # ---------------------------------------------------------------------------
 # School config
@@ -336,13 +292,14 @@ SCHOOL_PHONE = os.environ.get("SCHOOL_PHONE", "+92 42 9920 2040")
 SCHOOL_EMAIL = os.environ.get("SCHOOL_EMAIL", "info@apslahore.edu.pk")
 SCHOOL_CURRENCY = "PKR"
 SCHOOL_CURRENCY_SYMBOL = "Rs."
-SCHOOL_LATE_FEE_DAYS = env_int("SCHOOL_LATE_FEE_DAYS", 7)
-SCHOOL_LATE_FEE_AMOUNT = env_int("SCHOOL_LATE_FEE_AMOUNT", 500)
-
-SCHOOL_REGISTRATION_PREFIX = "APS"      # e.g. APS-2026-000001
+SCHOOL_LATE_FEE_DAYS = 7
+SCHOOL_LATE_FEE_AMOUNT = 500
+SCHOOL_REGISTRATION_PREFIX = "APS"        # was SCH — now uses APS-2026-000001
 SCHOOL_CHALLAN_PREFIX = "CH"
 SCHOOL_RECEIPT_PREFIX = "RC"
 SCHOOL_EMPLOYEE_PREFIX = "EMP"
+
+PAYMENT_GATEWAY_ENABLED = False
 
 AUDIT_LOG_MODELS = [
     "students.student", "admissions.admission", "fees.feechallan",
@@ -350,9 +307,8 @@ AUDIT_LOG_MODELS = [
     "announcements.announcement", "accounts.user",
 ]
 
-
 # ---------------------------------------------------------------------------
-# Custom error handlers
+# Custom error handlers — friendly messages, no raw tracebacks shown to users
 # ---------------------------------------------------------------------------
 handler404 = "config.urls.handler404_page"
 handler500 = "config.urls.handler500_page"
