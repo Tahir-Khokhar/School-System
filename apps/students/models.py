@@ -4,11 +4,11 @@ Student + StudentEnrollment. The enrollment links a student to a class/section
 in a given academic year, so historical records are preserved across years.
 """
 from django.conf import settings
-from django.db import models
-from django.db import transaction
+from django.db import models, transaction
 from django.utils import timezone
 
 from apps.common.models import TimeStampedModel, AcademicYear, SchoolClass, Section
+from apps.common.validators import validate_file_extension, validate_file_size
 
 
 class StudentManager(models.Manager):
@@ -43,13 +43,21 @@ class Student(TimeStampedModel):
     mother_name = models.CharField(max_length=200, blank=True)
     date_of_birth = models.DateField(null=True, blank=True)
     gender = models.CharField(max_length=10, choices=Gender.choices, default=Gender.MALE)
-    cnic_or_bform = models.CharField(max_length=20, blank=True)
+    # CNIC/B-Form — unique ONLY when non-empty (a student without one
+    # shouldn't be blocked from creation; the school office enters it later).
+    cnic_or_bform = models.CharField(
+        max_length=20, blank=True, db_index=True,
+        help_text="CNIC for adults or B-Form for minors. Unique per student when non-empty.",
+    )
     address = models.TextField(blank=True)
     previous_school = models.CharField(max_length=200, blank=True)
     previous_class = models.CharField(max_length=50, blank=True)
     contact_phone = models.CharField(max_length=20, blank=True)
     email = models.EmailField(blank=True)
-    photograph = models.ImageField(upload_to="students/", blank=True, null=True)
+    photograph = models.ImageField(
+        upload_to="students/", blank=True, null=True,
+        validators=[validate_file_extension, validate_file_size],
+    )
     parent = models.ForeignKey(
         "parents.Parent", on_delete=models.PROTECT,
         related_name="children", null=True, blank=True,
@@ -74,6 +82,15 @@ class Student(TimeStampedModel):
         indexes = [
             models.Index(fields=["status"]),
             models.Index(fields=["current_class", "current_section"]),
+        ]
+        constraints = [
+            # Unique only when CNIC is provided. Multiple blank CNICs are
+            # allowed (the school office enters CNIC/B-Form later).
+            models.UniqueConstraint(
+                fields=["cnic_or_bform"],
+                condition=~models.Q(cnic_or_bform=""),
+                name="unique_student_cnic_when_nonempty",
+            ),
         ]
 
     def __str__(self):
@@ -121,16 +138,27 @@ class StudentEnrollment(TimeStampedModel):
 
 # ---------------------------------------------------------------------------
 # Registration number service
+# Race-safe: transaction.atomic + select_for_update on the last-issued row.
+# If two parallel requests reach generate() simultaneously, the row lock
+# serializes them — the unique constraint on registration_no catches any
+# remaining collision as a fallback IntegrityError.
 # ---------------------------------------------------------------------------
 class RegistrationNumberService:
     """SCH-<YEAR>-<6-digit sequence>"""
 
     @classmethod
+    @transaction.atomic
     def generate(cls, year=None):
         year = year or timezone.now().year
         prefix = settings.SCHOOL_REGISTRATION_PREFIX
         pattern = f"{prefix}-{year}-"
-        last = Student.objects.filter(registration_no__startswith=pattern).order_by("-registration_no").first()
+        last = (
+            Student.objects
+            .select_for_update()
+            .filter(registration_no__startswith=pattern)
+            .order_by("-registration_no")
+            .first()
+        )
         if last:
             try:
                 seq = int(last.registration_no.rsplit("-", 1)[-1]) + 1
