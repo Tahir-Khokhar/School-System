@@ -1,13 +1,14 @@
 """
 Fees app views — challans, lookup, payment, defaulters, PDFs, gateway integration.
 """
-import io
+import logging
 from decimal import Decimal
 from datetime import datetime
+
 from django.contrib import messages
-from apps.accounts.mixins import StaffRequiredMixin
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.db import transaction
+from django.db.models import Q, Sum, F
 from django.http import HttpResponse, HttpResponseNotFound, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
@@ -19,7 +20,8 @@ from django.views.generic import ListView, DetailView, CreateView, FormView, Vie
 
 from django_ratelimit.decorators import ratelimit
 
-from apps.accounts.views import TwoFactorRequiredMixin
+from apps.accounts.mixins import StaffRequiredMixin
+from apps.accounts.views import TwoFactorRequiredMixin, rate_limit_exceeded
 from apps.students.models import Student
 from apps.common.models import AcademicYear, SchoolClass
 from .models import (
@@ -31,6 +33,22 @@ from .forms import (
 )
 from .services import FeeService
 from .payment_gateway import get_gateway, PaymentGatewayError
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# FIX #1 / #2 / #3 — Shared helpers for rate-limit handling.
+# `block=True` raises Ratelimited *before* dispatch, so `request.limited` is
+# never set. We use `block=False` + a manual check so we can render a friendly
+# page instead of a bare 403.
+# ---------------------------------------------------------------------------
+def _is_rate_limited(request):
+    return getattr(request, "limited", False)
+
+
+def _rate_limited_response(request):
+    return rate_limit_exceeded(request)
 
 
 # ---------------------------------------------------------------------------
@@ -74,13 +92,21 @@ class FeeChallanListView(StaffRequiredMixin, ListView):
     paginate_by = 25
 
     def get_queryset(self):
-        qs = FeeChallan.objects.select_related("student", "academic_year", "student__current_class")
+        qs = FeeChallan.objects.select_related(
+            "student", "academic_year", "student__current_class"
+        )
         status = self.request.GET.get("status")
-        if status:
+        if status and status in FeeChallan.Status.values:  # FIX #20
             qs = qs.filter(status=status)
         q = self.request.GET.get("q")
         if q:
-            qs = qs.filter(challan_no__icontains=q) | qs.filter(student__full_name__icontains=q) | qs.filter(student__registration_no__icontains=q)
+            # FIX #4 — use Q() instead of `|` on querysets, which loses
+            # select_related and can produce duplicate/UNION-style rows.
+            qs = qs.filter(
+                Q(challan_no__icontains=q)
+                | Q(student__full_name__icontains=q)
+                | Q(student__registration_no__icontains=q)
+            )
         return qs
 
     def get_context_data(self, **kwargs):
@@ -102,8 +128,73 @@ class FeeChallanDetailView(StaffRequiredMixin, DetailView):
             {"title": self.object.challan_no},
         ]
         ctx["items"] = self.object.items.select_related("fee_type")
-        ctx["payments"] = self.object.payments.all().order_by("-payment_date")
+        ctx["payments"] = self.object.payments.order_by("-payment_date")
         return ctx
+
+
+# FIX #6 — Extract context building into a plain function so both the
+# HTML and PDF views share it without instantiating a DetailView manually.
+def build_challan_print_context(challan, request):
+    """Build the full context for the 3-copy challan voucher (HTML or PDF)."""
+    items = challan.items.select_related("fee_type")
+
+    items_by_type = {item.fee_type.fee_type: item for item in items}
+
+    def amount_for(*fee_types):
+        total = Decimal("0")
+        for ft in fee_types:
+            if ft in items_by_type:
+                total += items_by_type[ft].amount
+        return total
+
+    late_fee = FeeService.calculate_late_fee(challan)
+
+    # FIX #8 — explicit "security" fee_type instead of a stringly-typed
+    # `"security" in str(dict)` check that matched far too much.
+    fee_rows = [
+        {"label": "Security Fees",        "amount": amount_for("security")},
+        {"label": "Admission Fees",       "amount": amount_for("admission")},
+        {"label": "Development Fund",     "amount": amount_for("annual")},
+        {"label": "Tuition Fees",         "amount": amount_for("tuition")},
+        {"label": "Misc. Fees",           "amount": amount_for(
+            "examination", "lab", "library", "sports", "computer")},
+        {"label": "Registration Fees",    "amount": Decimal("0")},
+        {"label": "Other",                "amount": Decimal("0")},
+        {"label": "Student Card",         "amount": Decimal("0")},
+        {"label": "Prospectus Charges",   "amount": Decimal("0")},
+        {"label": "Reg. Form Charges",    "amount": Decimal("0")},
+        {"label": "Transport Charges",    "amount": amount_for("transport")},
+        {"label": "Arrears",              "amount": Decimal("0")},
+    ]
+
+    ctx = {
+        "challan": challan,
+        "items": items,
+        "payments": challan.payments.filter(is_successful=True),
+        "fee_rows": fee_rows,
+        "total_after_due": challan.total_payable + late_fee,
+        "copy_labels": ["Bank", "School", "Student"],
+    }
+
+    # FIX #10 — guard optional QR dependency so a missing lib doesn't 500.
+    try:
+        import qrcode
+        import qrcode.image.svg
+        from io import BytesIO
+        qr_data = (
+            f"APS|{challan.challan_no}|"
+            f"{challan.student.registration_no}|{challan.total_payable}"
+        )
+        factory = qrcode.image.svg.SvgPathImage
+        img = qrcode.make(qr_data, image_factory=factory, box_size=6, border=1)
+        buf = BytesIO()
+        img.save(buf)
+        ctx["qr_svg"] = buf.getvalue().decode("utf-8")
+    except Exception as exc:
+        logger.warning("QR generation failed for %s: %s", challan.challan_no, exc)
+        ctx["qr_svg"] = None
+
+    return ctx
 
 
 class FeeChallanPrintView(StaffRequiredMixin, DetailView):
@@ -114,53 +205,7 @@ class FeeChallanPrintView(StaffRequiredMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx["items"] = self.object.items.select_related("fee_type")
-        ctx["payments"] = self.object.payments.filter(is_successful=True)
-
-        # Build 12-row APS-style fee breakdown
-        # Maps our internal fee items to APS's standard 12-row format
-        items_by_type = {item.fee_type.fee_type: item for item in ctx["items"]}
-        def amount_for(*fee_types):
-            total = Decimal("0")
-            for ft in fee_types:
-                if ft in items_by_type:
-                    total += items_by_type[ft].amount
-            return total
-
-        ctx["fee_rows"] = [
-            {"label": "Security Fees",        "amount": amount_for("other") if "security" in str(items_by_type) else Decimal("0")},
-            {"label": "Admission Fees",       "amount": amount_for("admission")},
-            {"label": "Development Fund",     "amount": amount_for("annual")},
-            {"label": "Tuition Fees",         "amount": amount_for("tuition")},
-            {"label": "Misc. Fees",           "amount": amount_for("examination", "lab", "library", "sports", "computer")},
-            {"label": "Registration Fees",    "amount": Decimal("0")},
-            {"label": "Other",                "amount": Decimal("0")},
-            {"label": "Student Card",         "amount": Decimal("0")},
-            {"label": "Prospectus Charges",   "amount": Decimal("0")},
-            {"label": "Reg. Form Charges",    "amount": Decimal("0")},
-            {"label": "Transport Charges",    "amount": amount_for("transport")},
-            {"label": "Arrears",              "amount": Decimal("0")},
-        ]
-
-        # Total after due date = total + late fee
-        from apps.fees.services import FeeService
-        late_fee = FeeService.calculate_late_fee(self.object)
-        ctx["total_after_due"] = self.object.total_payable + late_fee
-
-        # Three copies for Bank / School / Student
-        ctx["copy_labels"] = ["Bank", "School", "Student"]
-
-        # Generate QR code SVG (contains challan number + amount for bank scanning)
-        import qrcode
-        import qrcode.image.svg
-        from io import BytesIO
-        qr_data = f"APS|{self.object.challan_no}|{self.object.student.registration_no}|{self.object.total_payable}"
-        factory = qrcode.image.svg.SvgPathImage
-        img = qrcode.make(qr_data, image_factory=factory, box_size=6, border=1)
-        buf = BytesIO()
-        img.save(buf)
-        ctx["qr_svg"] = buf.getvalue().decode("utf-8")
-
+        ctx.update(build_challan_print_context(self.object, self.request))
         return ctx
 
 
@@ -179,27 +224,48 @@ class MonthlyChallanGenerateView(LoginRequiredMixin, PermissionRequiredMixin, Fo
         return ctx
 
     def form_valid(self, form):
-        school_class_id = self.request.POST.get("school_class") or self.request.GET.get("class")
+        # FIX #21 — read the class from cleaned_data (validated), falling
+        # back to GET only for pre-selected context, never raw POST.
+        school_class = form.cleaned_data.get("school_class") or self.request.GET.get("class")
         month = form.cleaned_data["month_label"]
-        if school_class_id:
-            n = FeeService.generate_monthly_challans_for_class(school_class_id, month, user=self.request.user)
+
+        if school_class:
+            n = FeeService.generate_monthly_challans_for_class(
+                school_class, month, user=self.request.user
+            )
             messages.success(self.request, f"Generated {n} challan(s) for {month}.")
         else:
-            # generate for all active students
             count_total = 0
+            failed = 0
+            # FIX #5 — log failures instead of silently swallowing them.
             for student in Student.objects.filter(status=Student.Status.ACTIVE):
                 try:
                     FeeService.generate_monthly_challan(student, month, user=self.request.user)
                     count_total += 1
-                except Exception:
-                    continue
-            messages.success(self.request, f"Generated {count_total} challan(s) for {month}.")
+                except Exception as exc:
+                    failed += 1
+                    logger.warning(
+                        "Failed to generate challan for %s: %s",
+                        student.registration_no, exc,
+                    )
+            msg = f"Generated {count_total} challan(s) for {month}."
+            if failed:
+                msg += f" {failed} student(s) skipped — check logs."
+                messages.warning(self.request, msg)
+            else:
+                messages.success(self.request, msg)
         return redirect("fees:challan_list")
 
 
 # ---------------------------------------------------------------------------
 # Challan Lookup → Payment workflow
 # ---------------------------------------------------------------------------
+# FIX #1 — apply ratelimit at class definition, and check `request.limited`
+# in dispatch (ratelimit uses block=False so dispatch can render a friendly page).
+@method_decorator(
+    ratelimit(key="user", rate="10/m", method="POST", block=False),
+    name="post",
+)
 class ChallanLookupView(LoginRequiredMixin, PermissionRequiredMixin, FormView):
     """Enter challan number, get the challan, jump to payment confirmation.
     Rate-limited: 10 lookups/minute per user — protects against challan-number
@@ -208,17 +274,20 @@ class ChallanLookupView(LoginRequiredMixin, PermissionRequiredMixin, FormView):
     form_class = ChallanLookupForm
     permission_required = "fees.add_feepayment"
 
+    def dispatch(self, request, *args, **kwargs):
+        return super().dispatch(request, *args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        if _is_rate_limited(request):
+            return _rate_limited_response(request)
+        return super().post(request, *args, **kwargs)
+
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx["breadcrumbs"] = [
-            {"title": "Record Payment"},
-        ]
+        ctx["breadcrumbs"] = [{"title": "Record Payment"}]
         return ctx
 
     def form_valid(self, form):
-        from django_ratelimit.decorators import ratelimit
-        from django.utils.decorators import method_decorator
-
         challan_no = form.cleaned_data["challan_no"].strip()
         challan = FeeChallan.objects.filter(challan_no__iexact=challan_no).first()
         if not challan:
@@ -227,7 +296,11 @@ class ChallanLookupView(LoginRequiredMixin, PermissionRequiredMixin, FormView):
         return redirect("fees:payment_confirm", challan_pk=challan.pk)
 
 
-@method_decorator(ratelimit(key="user", rate="5/m", method="POST", block=True), name="post")
+# FIX #2 — block=False + manual check so the friendly page actually renders.
+@method_decorator(
+    ratelimit(key="user", rate="5/m", method="POST", block=False),
+    name="post",
+)
 class PaymentConfirmView(LoginRequiredMixin, PermissionRequiredMixin, FormView):
     """Cash/counter payment.
     Rate-limited: 5 payments/minute per user — protects against fast-click attacks."""
@@ -235,10 +308,12 @@ class PaymentConfirmView(LoginRequiredMixin, PermissionRequiredMixin, FormView):
     form_class = PaymentForm
     permission_required = "fees.add_feepayment"
 
+    def post(self, request, *args, **kwargs):
+        if _is_rate_limited(request):
+            return _rate_limited_response(request)
+        return super().post(request, *args, **kwargs)
+
     def dispatch(self, request, *args, **kwargs):
-        if getattr(request, "limited", False):
-            from apps.accounts.views import rate_limit_exceeded
-            return rate_limit_exceeded(request)
         self.challan = get_object_or_404(FeeChallan, pk=kwargs["challan_pk"])
         return super().dispatch(request, *args, **kwargs)
 
@@ -259,6 +334,8 @@ class PaymentConfirmView(LoginRequiredMixin, PermissionRequiredMixin, FormView):
         return initial
 
     def form_valid(self, form):
+        # FIX #19 — split the payment attempt from downstream side effects so
+        # an admission/notification failure is NOT reported as "payment failed".
         try:
             payment = FeeService.record_payment(
                 challan=self.challan,
@@ -269,26 +346,27 @@ class PaymentConfirmView(LoginRequiredMixin, PermissionRequiredMixin, FormView):
                 payment_date=form.cleaned_data["payment_date"],
                 notes=form.cleaned_data["notes"],
             )
-            messages.success(
-                self.request,
-                f"Payment of {payment.amount} recorded. Receipt: {payment.receipt_no}."
-            )
-            # Try to fire admission completion if it was an admission challan
-            try:
-                from apps.admissions.services import AdmissionService
-                # FIX #9: Refresh challan from DB to get updated status (was using stale copy)
-                self.challan.refresh_from_db()
-                admission = self.challan.admissions.first()
-                if admission and self.challan.status == FeeChallan.Status.PAID:
-                    AdmissionService.complete_after_payment(admission, self.request.user)
-            except Exception as e:
-                # Log the error instead of silently swallowing it
-                import logging
-                logging.getLogger(__name__).warning(f"Admission completion failed: {e}")
-            return redirect("fees:challan_detail", pk=self.challan.pk)
         except Exception as e:
             messages.error(self.request, f"Payment failed: {e}")
             return self.form_invalid(form)
+
+        messages.success(
+            self.request,
+            f"Payment of {payment.amount} recorded. Receipt: {payment.receipt_no}.",
+        )
+
+        # Downstream side effects — failures must not roll back the payment.
+        try:
+            self.challan.refresh_from_db()
+            from apps.admissions.services import AdmissionService
+            admission = self.challan.admissions.first()
+            if admission and self.challan.status == FeeChallan.Status.PAID:
+                AdmissionService.complete_after_payment(admission, self.request.user)
+        except Exception as e:
+            logger.warning("Admission completion failed for %s: %s",
+                           self.challan.challan_no, e)
+
+        return redirect("fees:challan_detail", pk=self.challan.pk)
 
 
 class FeePaymentListView(StaffRequiredMixin, ListView):
@@ -298,10 +376,16 @@ class FeePaymentListView(StaffRequiredMixin, ListView):
     paginate_by = 25
 
     def get_queryset(self):
-        qs = FeePayment.objects.select_related("challan", "challan__student", "recorded_by")
+        qs = FeePayment.objects.select_related(
+            "challan", "challan__student", "recorded_by"
+        )
         q = self.request.GET.get("q")
         if q:
-            qs = qs.filter(receipt_no__icontains=q) | qs.filter(challan__student__full_name__icontains=q)
+            # FIX #4 — Q() instead of `|` on querysets.
+            qs = qs.filter(
+                Q(receipt_no__icontains=q)
+                | Q(challan__student__full_name__icontains=q)
+            )
         return qs
 
 
@@ -314,15 +398,29 @@ class FeeDefaulterReportView(StaffRequiredMixin, PermissionRequiredMixin, ListVi
     permission_required = "fees.view_feechallan"
     paginate_by = 25
 
+    STATUSES = [
+        FeeChallan.Status.UNPAID,
+        FeeChallan.Status.PARTIAL,
+        FeeChallan.Status.OVERDUE,
+    ]
+
     def get_queryset(self):
-        return FeeChallan.objects.filter(
-            status__in=[FeeChallan.Status.UNPAID, FeeChallan.Status.PARTIAL, FeeChallan.Status.OVERDUE]
-        ).select_related("student", "academic_year", "student__current_class").order_by("due_date")
+        return (
+            FeeChallan.objects
+            .filter(status__in=self.STATUSES)
+            .select_related("student", "academic_year", "student__current_class")
+            .order_by("due_date")
+        )
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        qs = self.get_queryset()
-        ctx["total_outstanding"] = sum(c.balance for c in qs)
+        # FIX #7 — aggregate in the DB instead of pulling every row into Python.
+        agg = (
+            FeeChallan.objects
+            .filter(status__in=self.STATUSES)
+            .aggregate(total=Sum(F("total_payable") - F("amount_paid")))
+        )
+        ctx["total_outstanding"] = agg["total"] or Decimal("0")
         ctx["breadcrumbs"] = [
             {"title": "Finance", "url": reverse("fees:challan_list")},
             {"title": "Fee Defaulters"},
@@ -339,23 +437,36 @@ class FeeChallanPDFView(StaffRequiredMixin, View):
     def get(self, request, *args, **kwargs):
         from weasyprint import HTML
         challan = get_object_or_404(FeeChallan, pk=kwargs["pk"])
-        # Reuse the same context-building logic as FeeChallanPrintView
-        view = FeeChallanPrintView()
-        view.object = challan
-        view.request = request
-        ctx = view.get_context_data()
+        # FIX #6 — reuse the shared context builder instead of instantiating
+        # FeeChallanPrintView manually.
+        ctx = build_challan_print_context(challan, request)
         ctx["is_pdf"] = True
         html = render_to_string("fees/challan_print.html", ctx, request=request)
         pdf = HTML(string=html, base_url=request.build_absolute_uri("/")).write_pdf()
         response = HttpResponse(pdf, content_type="application/pdf")
-        response["Content-Disposition"] = f'inline; filename="challan_{challan.challan_no}.pdf"'
+        response["Content-Disposition"] = (
+            f'inline; filename="challan_{challan.challan_no}.pdf"'
+        )
         return response
 
 
 class ReceiptPDFView(LoginRequiredMixin, View):
+    # FIX #15 — enforce staff OR ownership; previously any logged-in user
+    # could read any receipt by pk.
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return self.handle_no_permission()
+        payment = get_object_or_404(FeePayment, pk=kwargs["pk"])
+        is_staff = request.user.is_staff or request.user.has_perm("fees.view_feepayment")
+        is_owner = getattr(payment.challan.student, "user_id", None) == request.user.pk
+        if not (is_staff or is_owner):
+            return HttpResponseNotFound("Receipt not found.")
+        self.payment = payment
+        return super().dispatch(request, *args, **kwargs)
+
     def get(self, request, *args, **kwargs):
         from weasyprint import HTML
-        payment = get_object_or_404(FeePayment, pk=kwargs["pk"])
+        payment = self.payment
         challan = payment.challan
         items = challan.items.select_related("fee_type")
         html = render_to_string("fees/receipt_print.html", {
@@ -364,26 +475,41 @@ class ReceiptPDFView(LoginRequiredMixin, View):
         }, request=request)
         pdf = HTML(string=html, base_url=request.build_absolute_uri("/")).write_pdf()
         response = HttpResponse(pdf, content_type="application/pdf")
-        response["Content-Disposition"] = f'inline; filename="receipt_{payment.receipt_no}.pdf"'
+        response["Content-Disposition"] = (
+            f'inline; filename="receipt_{payment.receipt_no}.pdf"'
+        )
         return response
 
 
 # ===========================================================================
 # ONLINE PAYMENT GATEWAY — Student/Parent Portal → Gateway → Webhook
 # ===========================================================================
+@method_decorator(
+    ratelimit(key="user", rate="6/m", method="POST", block=False),
+    name="post",
+)
 class OnlinePaymentStartView(LoginRequiredMixin, View):
     """Student/parent clicks 'Pay Online' → we redirect to the gateway.
     Rate-limited: 6 checkout starts/minute per user."""
 
-    @method_decorator(ratelimit(key="user", rate="6/m", method="POST", block=True))
     def post(self, request, *args, **kwargs):
-        if getattr(request, "limited", False):
-            from apps.accounts.views import rate_limit_exceeded
-            return rate_limit_exceeded(request)
+        if _is_rate_limited(request):
+            return _rate_limited_response(request)
+
         challan = get_object_or_404(FeeChallan, pk=kwargs["pk"])
+
+        # FIX #16 — ownership check: only staff or the student's own user
+        # may start a checkout for this challan.
+        is_staff = request.user.is_staff or request.user.has_perm("fees.change_feechallan")
+        is_owner = getattr(challan.student, "user_id", None) == request.user.pk
+        if not (is_staff or is_owner):
+            messages.error(request, "You are not allowed to pay this challan.")
+            return redirect("fees:challan_detail", pk=challan.pk)
+
         if challan.status == FeeChallan.Status.PAID:
             messages.error(request, "This challan is already paid.")
             return redirect("fees:challan_detail", pk=challan.pk)
+
         try:
             gateway = get_gateway()
             checkout = gateway.create_checkout(challan, request)
@@ -391,27 +517,62 @@ class OnlinePaymentStartView(LoginRequiredMixin, View):
             messages.error(request, f"Payment gateway not available: {e}")
             return redirect("fees:challan_detail", pk=challan.pk)
         except Exception as e:
+            logger.exception("Checkout start failed for %s", challan.challan_no)
             messages.error(request, f"Could not start checkout: {e}")
             return redirect("fees:challan_detail", pk=challan.pk)
 
-        # Audit the checkout start
-        from apps.audit_logs.models import AuditLogService
-        AuditLogService.log(
-            user=request.user, action="payment",
-            obj=challan,
-            description=f"Started online payment via {gateway.name} gateway (session {checkout.get('session_id')})",
-        )
+        try:
+            from apps.audit_logs.models import AuditLogService
+            AuditLogService.log(
+                user=request.user, action="payment",
+                obj=challan,
+                description=(
+                    f"Started online payment via {gateway.name} gateway "
+                    f"(session {checkout.get('session_id')})"
+                ),
+            )
+        except Exception:
+            logger.exception("Audit log failed for checkout start")
 
-        # JazzCash returns form fields that need to be POSTed via browser,
-        # so render an auto-submit form
         if "form_fields" in checkout:
             return render(request, "fees/gateway_redirect.html", {
                 "checkout_url": checkout["checkout_url"],
                 "form_fields": checkout["form_fields"],
                 "challan": challan,
             })
-        # Stripe / Test → simple redirect
         return redirect(checkout["checkout_url"])
+
+
+def _record_online_payment_once(challan, meta, *, user=None, source=""):
+    """Idempotent online-payment recording shared by webhook/callback views.
+
+    Returns (payment, created). Raises on unexpected DB errors so the caller
+    can decide how to respond to the gateway.
+    """
+    txn_ref = meta.get("transaction_ref") or ""
+
+    # FIX #11 — idempotency: if we've already recorded this transaction_ref,
+    # don't double-record. This is what makes webhook retries safe.
+    if txn_ref:
+        existing = FeePayment.objects.filter(
+            challan=challan, transaction_ref=txn_ref
+        ).first()
+        if existing:
+            return existing, False
+
+    if challan.status == FeeChallan.Status.PAID:
+        return None, False
+
+    payment = FeeService.record_payment(
+        challan=challan,
+        amount=meta.get("amount", challan.total_payable),
+        method=meta.get("method", "online"),
+        user=user,
+        transaction_ref=txn_ref,
+        notes=f"Online payment verified ({source})",
+        is_successful=True,
+    )
+    return payment, True
 
 
 @csrf_exempt
@@ -423,92 +584,141 @@ def stripe_webhook(request):
         gateway = get_gateway("stripe")
     except PaymentGatewayError:
         return HttpResponseBadRequest("Stripe not configured")
+
     try:
         is_successful, meta = gateway.verify_payment(request)
     except Exception:
+        logger.exception("Stripe webhook verification raised")
+        # Return 400 so Stripe retries if the signature was malformed but
+        # we couldn't parse; 500 for unexpected errors would also retry.
         return HttpResponseBadRequest("Webhook verification failed")
+
     if not is_successful:
         return HttpResponse("OK (ignored)")
+
     challan = FeeChallan.objects.filter(challan_no=meta.get("challan_no")).first()
     if not challan:
+        logger.warning("Stripe webhook for unknown challan: %s", meta.get("challan_no"))
         return HttpResponseBadRequest("Unknown challan")
-    # Record the payment (transaction-safe, idempotent)
+
     try:
-        if challan.status != FeeChallan.Status.PAID:
-            FeeService.record_payment(
-                challan=challan,
-                amount=meta.get("amount", challan.total_payable),
-                method=meta.get("method", "online"),
-                user=None,
-                transaction_ref=meta.get("transaction_ref", ""),
-                notes="Online payment verified by gateway webhook",
-                is_successful=True,
-            )
+        payment, created = _record_online_payment_once(
+            challan, meta, user=None, source="Stripe webhook"
+        )
+    except Exception:
+        # FIX #11 — do NOT swallow: return 5xx so Stripe retries, otherwise
+        # the payment is silently lost.
+        logger.exception("Stripe webhook: failed to record payment for %s",
+                         challan.challan_no)
+        return HttpResponse("Retry", status=500)
+
+    if created:
+        try:
             from apps.audit_logs.models import AuditLogService
             AuditLogService.log(
-                user=None, action="payment",
-                obj=challan,
-                description=f"Online payment verified via Stripe webhook — {meta.get('transaction_ref')}",
+                user=None, action="payment", obj=challan,
+                description=(
+                    f"Online payment verified via Stripe webhook — "
+                    f"{meta.get('transaction_ref')}"
+                ),
             )
-            # Notify admins
             from apps.notifications.models import NotificationService
             NotificationService.notify_role(
                 "accountant",
                 "New Online Fee Payment",
-                f"{challan.student.full_name} paid {challan.total_payable} for {challan.month or challan.challan_no}.",
+                (
+                    f"{challan.student.full_name} paid {challan.total_payable} "
+                    f"for {challan.month or challan.challan_no}."
+                ),
                 "fee_payment",
             )
-    except Exception as e:
-        # Likely already-paid (idempotent); log and move on
-        pass
+        except Exception:
+            logger.exception("Post-payment side effects failed for %s",
+                             challan.challan_no)
+
     return HttpResponse("OK")
 
 
+# FIX #18 — remove the aggressive 10/m IP ratelimit; NAT'd schools would get
+# 403'd right after paying. The signed secure-hash is the real protection.
 @method_decorator(csrf_exempt, name="dispatch")
-@method_decorator(ratelimit(key="ip", rate="10/m", method="POST", block=True), name="post")
 class JazzCashReturnView(View):
     """JazzCash redirects the browser back here with a signed POST.
     We verify the secure hash server-side BEFORE trusting anything."""
 
     def post(self, request, *args, **kwargs):
-        if getattr(request, "limited", False):
-            from apps.accounts.views import rate_limit_exceeded
-            return rate_limit_exceeded(request)
         try:
             gateway = get_gateway("jazzcash")
         except PaymentGatewayError:
             return HttpResponseBadRequest("JazzCash not configured")
-        is_successful, meta = gateway.verify_payment(request)
-        challan_no = meta.get("challan_no") or request.POST.get("pp_BillReference", "")
+
+        # FIX #12 — if verification raises, return 400 instead of 500.
+        try:
+            is_successful, meta = gateway.verify_payment(request)
+        except Exception:
+            logger.exception("JazzCash secure-hash verification raised")
+            return HttpResponseBadRequest("JazzCash verification failed")
+
+        # FIX #12 — only trust challan_no from the verified payload, never
+        # from user-controlled POST data (pp_BillReference).
+        challan_no = meta.get("challan_no")
+        if not challan_no:
+            logger.warning("JazzCash callback missing challan_no in verified meta")
+            return HttpResponseBadRequest("Missing challan reference")
+
         challan = FeeChallan.objects.filter(challan_no=challan_no).first()
         if not challan:
             messages.error(request, "Challan not found.")
             return redirect("dashboard:home")
-        if is_successful and challan.status != FeeChallan.Status.PAID:
-            FeeService.record_payment(
-                challan=challan,
-                amount=meta.get("amount", challan.total_payable),
-                method=meta.get("method", "online"),
-                user=request.user if request.user.is_authenticated else None,
-                transaction_ref=meta.get("transaction_ref", ""),
-                notes="Online payment verified by JazzCash secure hash",
-                is_successful=True,
-            )
-            messages.success(request, "Payment verified successfully! Your challan is now PAID.")
-            from apps.audit_logs.models import AuditLogService
-            AuditLogService.log(
-                user=request.user if request.user.is_authenticated else None,
-                action="payment", obj=challan,
-                description=f"JazzCash payment verified — {meta.get('transaction_ref')}",
-            )
+
+        if is_successful:
+            try:
+                payment, created = _record_online_payment_once(
+                    challan, meta,
+                    user=request.user if request.user.is_authenticated else None,
+                    source="JazzCash secure hash",
+                )
+            except Exception:
+                logger.exception("JazzCash: failed to record payment for %s",
+                                 challan.challan_no)
+                messages.error(
+                    request,
+                    "Payment could not be recorded. If you were charged, "
+                    "please contact the school office with your transaction ID.",
+                )
+                return redirect("fees:challan_detail", pk=challan.pk)
+
+            if created:
+                messages.success(
+                    request,
+                    "Payment verified successfully! Your challan is now PAID.",
+                )
+                try:
+                    from apps.audit_logs.models import AuditLogService
+                    AuditLogService.log(
+                        user=request.user if request.user.is_authenticated else None,
+                        action="payment", obj=challan,
+                        description=(
+                            f"JazzCash payment verified — "
+                            f"{meta.get('transaction_ref')}"
+                        ),
+                    )
+                except Exception:
+                    logger.exception("Audit log failed for JazzCash payment")
+            else:
+                messages.info(request, "This payment was already recorded.")
         else:
-            messages.error(request, "Payment verification failed. If you were charged, please contact the school office.")
+            messages.error(
+                request,
+                "Payment verification failed. If you were charged, please "
+                "contact the school office.",
+            )
         return redirect("fees:challan_detail", pk=challan.pk)
 
 
 class TestGatewayPayView(LoginRequiredMixin, View):
     """Test gateway 'checkout' — ONLY available when DEBUG=True.
-    Requires login, verifies challan pk matches session_id, charges balance only."""
+    Requires login, verifies session_id binds to the challan, charges balance only."""
 
     def dispatch(self, request, *args, **kwargs):
         from django.conf import settings
@@ -516,12 +726,27 @@ class TestGatewayPayView(LoginRequiredMixin, View):
             return HttpResponseNotFound("Test gateway is not available in production.")
         return super().dispatch(request, *args, **kwargs)
 
+    # FIX #13 — require the session_id to be exactly the expected format,
+    # not merely to *contain* the challan number as a substring.
+    @staticmethod
+    def _session_matches(session_id, challan):
+        # Expected: f"test-{challan.challan_no}-{nonce}"
+        if not session_id or not session_id.startswith("test-"):
+            return False
+        parts = session_id.split("-", 2)
+        if len(parts) < 3:
+            return False
+        return parts[1] == challan.challan_no
+
     def get(self, request, *args, **kwargs):
         challan = get_object_or_404(FeeChallan, pk=kwargs["pk"])
         session_id = kwargs["session_id"]
-        # SECURITY: verify session_id contains THIS challan's number
-        if challan.challan_no not in session_id:
+        if not self._session_matches(session_id, challan):
             return HttpResponseBadRequest("Session ID does not match this challan.")
+        # FIX #24 — don't render pay page for fully-paid/cancelled challans.
+        if challan.status in (FeeChallan.Status.PAID, FeeChallan.Status.CANCELLED):
+            messages.error(request, "This challan cannot be paid online.")
+            return redirect("fees:challan_detail", pk=challan.pk)
         return render(request, "fees/test_gateway_pay.html", {
             "challan": challan,
             "session_id": session_id,
@@ -532,7 +757,9 @@ class TestGatewayPayView(LoginRequiredMixin, View):
         session_id = kwargs.get("session_id", "")
         posted_challan_no = request.POST.get("challan_no", "")
 
-        # SECURITY: verify challan_no in POST matches the URL pk's challan
+        # FIX #13 — re-verify session binding AND POST challan_no.
+        if not self._session_matches(session_id, challan):
+            return HttpResponseBadRequest("Session ID does not match this challan.")
         if posted_challan_no != challan.challan_no:
             messages.error(request, "Challan number mismatch. Payment rejected.")
             return redirect("fees:challan_detail", pk=challan.pk)
@@ -540,13 +767,11 @@ class TestGatewayPayView(LoginRequiredMixin, View):
         if challan.status == FeeChallan.Status.PAID:
             messages.error(request, "This challan is already paid.")
             return redirect("fees:challan_detail", pk=challan.pk)
-
         if challan.status == FeeChallan.Status.CANCELLED:
             messages.error(request, "This challan has been cancelled.")
             return redirect("fees:challan_detail", pk=challan.pk)
 
         try:
-            # Charge the BALANCE, not total_payable (prevents overpayment)
             amount_to_charge = challan.balance
             if amount_to_charge <= 0:
                 messages.error(request, "No balance due on this challan.")
@@ -557,19 +782,20 @@ class TestGatewayPayView(LoginRequiredMixin, View):
                 amount=amount_to_charge,
                 method="online",
                 user=request.user,
-                transaction_ref=f"TEST-{session_id[-12:]}",
+                transaction_ref=f"TEST-{session_id}",
                 notes="Test gateway payment (DEBUG only)",
                 is_successful=True,
             )
             messages.success(request, "Test payment recorded. Challan marked PAID.")
         except ValueError as e:
             messages.error(request, f"Payment failed: {e}")
-        except Exception as e:
-            messages.error(request, f"Payment error: {e}")
+        except Exception:
+            logger.exception("Test gateway payment failed for %s", challan.challan_no)
+            messages.error(request, "Payment error. Please try again.")
         return redirect("fees:challan_detail", pk=challan.pk)
 
 
-class StripeReturnView(View):
+class StripeReturnView(LoginRequiredMixin, View):
     """User is redirected here after a successful Stripe checkout.
     NOTE: We don't trust this URL — the actual payment verification happens
     in the stripe_webhook view. We just show a friendly 'processing' page."""
@@ -577,6 +803,16 @@ class StripeReturnView(View):
     def get(self, request, *args, **kwargs):
         challan_no = request.GET.get("challan_no")
         challan = FeeChallan.objects.filter(challan_no=challan_no).first()
+
+        # FIX #14 — do not leak challan existence to non-owners.
+        if challan:
+            is_staff = request.user.is_staff or request.user.has_perm(
+                "fees.view_feechallan"
+            )
+            is_owner = getattr(challan.student, "user_id", None) == request.user.pk
+            if not (is_staff or is_owner):
+                challan = None
+
         if challan and challan.status == FeeChallan.Status.PAID:
             messages.success(request, "Payment successful! Your challan is PAID.")
             return redirect("fees:challan_detail", pk=challan.pk)
