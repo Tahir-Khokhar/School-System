@@ -6,8 +6,10 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils.decorators import method_decorator
 from django.views.generic import TemplateView, View
 from django_otp.plugins.otp_totp.models import TOTPDevice
+from django_ratelimit.decorators import ratelimit
 
 User = get_user_model()
 
@@ -73,9 +75,20 @@ class Setup2FAView(LoginRequiredMixin, TemplateView):
         return ctx
 
 
+@method_decorator(ratelimit(key="user", rate="10/m", method="POST", block=True), name="post")
 class Verify2FAView(LoginRequiredMixin, View):
-    """Verify the user's first TOTP code, mark the device confirmed."""
+    """Verify the user's first TOTP code, mark the device confirmed.
+
+    Rate-limited: 10 verification attempts/minute/user. A 6-digit TOTP code
+    has only 1,000,000 possibilities — without rate limiting, an attacker
+    with the user's password could brute-force it in ~17 minutes at 1k req/s.
+    10/min bounds the attack to ~7 days minimum, by which time the code has
+    rotated ~10,080 times.
+    """
     def post(self, request, *args, **kwargs):
+        if getattr(request, "limited", False):
+            return rate_limit_exceeded(request)
+
         token = request.POST.get("token", "").strip()
         device = TOTPDevice.objects.filter(user=request.user, confirmed=False).first()
         if not device:
@@ -85,18 +98,32 @@ class Verify2FAView(LoginRequiredMixin, View):
             device.confirmed = True
             device.save()
             messages.success(request, "Two-factor authentication enabled!")
-            # Log audit entry
+            # Audit log entry — 2FA enablement is a security-relevant event.
             from apps.audit_logs.models import AuditLogService
-            AuditLogService.log(user=request.user, action="update",
-                                obj=request.user, description="Enabled 2FA on account")
+            AuditLogService.log(
+                user=request.user, action="update",
+                obj=request.user,
+                description="Enabled 2FA on account",
+            )
             return redirect("dashboard:home")
         messages.error(request, "Invalid token. Please make sure your authenticator app shows the current 6-digit code.")
         return redirect("accounts:setup_2fa")
 
 
+@method_decorator(ratelimit(key="user", rate="3/m", method="POST", block=True), name="post")
 class Disable2FAView(LoginRequiredMixin, View):
-    """Disable 2FA — only allowed after re-entering the current password."""
+    """Disable 2FA — only allowed after re-entering the current password.
+
+    Rate-limited: 3 attempts/minute (tighter than verify — disabling 2FA is
+    more dangerous). Audit-logged so the security trail survives.
+
+    NOTE: deliberately NOT protected by TwoFactorRequiredMixin (it's the
+    disable endpoint itself). Password re-entry is the security gate here.
+    """
     def post(self, request, *args, **kwargs):
+        if getattr(request, "limited", False):
+            return rate_limit_exceeded(request)
+
         from django.contrib.auth import authenticate
         password = request.POST.get("password", "")
         user = authenticate(username=request.user.username, password=password)
@@ -105,4 +132,11 @@ class Disable2FAView(LoginRequiredMixin, View):
             return redirect("accounts:setup_2fa")
         TOTPDevice.objects.filter(user=request.user).delete()
         messages.success(request, "Two-factor authentication disabled.")
+        # Audit log entry — 2FA disablement is a high-severity security event.
+        from apps.audit_logs.models import AuditLogService
+        AuditLogService.log(
+            user=request.user, action="update",
+            obj=request.user,
+            description="Disabled 2FA on account",
+        )
         return redirect("dashboard:home")
