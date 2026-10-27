@@ -3,10 +3,11 @@ School ERP — admissions app.
 Full workflow: Application → Verification → Approval → Registration → Class assignment → Challan → Payment → Active Student
 """
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 
 from apps.common.models import TimeStampedModel, AcademicYear, SchoolClass, Section
+from apps.common.validators import validate_file_extension, validate_file_size
 
 
 class Admission(TimeStampedModel):
@@ -83,7 +84,10 @@ class Admission(TimeStampedModel):
 class AdmissionDocument(TimeStampedModel):
     admission = models.ForeignKey(Admission, on_delete=models.CASCADE, related_name="documents")
     name = models.CharField(max_length=100)
-    file = models.FileField(upload_to="admissions/")
+    file = models.FileField(
+        upload_to="admissions/",
+        validators=[validate_file_extension, validate_file_size],
+    )
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL, null=True, blank=True,
@@ -95,13 +99,28 @@ class AdmissionDocument(TimeStampedModel):
 
 # ---------------------------------------------------------------------------
 # Application number generator + service
+# Race-safe: uses transaction.atomic + a SELECT ... FOR UPDATE pattern by
+# locking the last-issued row. Even under double-click parallel submissions,
+# the unique constraint catches any duplicate and the caller can retry.
 # ---------------------------------------------------------------------------
 class ApplicationNumberService:
     @classmethod
+    @transaction.atomic
     def generate(cls):
         year = timezone.now().year
         prefix = f"APP-{year}-"
-        last = Admission.objects.filter(application_no__startswith=prefix).order_by("-application_no").first()
+        # select_for_update() on the last-issued row serializes parallel
+        # generate() calls within the same transaction scope. If the row
+        # doesn't exist (first application of the year), we fall through to
+        # seq=1 — and the unique constraint on application_no will reject
+        # any concurrent collision.
+        last = (
+            Admission.objects
+            .select_for_update()
+            .filter(application_no__startswith=prefix)
+            .order_by("-application_no")
+            .first()
+        )
         if last:
             try:
                 seq = int(last.application_no.rsplit("-", 1)[-1]) + 1
