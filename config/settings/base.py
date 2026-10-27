@@ -1,6 +1,9 @@
 """
 Base Django settings for School ERP.
-Environment-specific overrides in dev.py / prod.py.
+Environment-specific overrides live in dev.py / prod.py.
+
+Anything security-sensitive is read from environment variables and validated
+at import time so misconfiguration fails loudly instead of silently.
 """
 import os
 from pathlib import Path
@@ -12,9 +15,9 @@ APPS_DIR = BASE_DIR / "apps"
 
 
 # ---------------------------------------------------------------------------
-# Small env helpers — avoids repeating `.lower() == "true"` and prevents
-# whitespace bugs when lists are comma-separated.
-# FIX #12 — centralised, accepts 1/true/yes/on.
+# Env helpers
+# Exported at module level (no leading underscore) so dev.py / prod.py can
+# use them via `from .base import *`.
 # ---------------------------------------------------------------------------
 def env_bool(name, default=False):
     return os.environ.get(name, str(default)).lower() in ("1", "true", "yes", "on")
@@ -34,24 +37,24 @@ def env_list(name, default=""):
 # ---------------------------------------------------------------------------
 # Security
 # ---------------------------------------------------------------------------
-# FIX #1 — never ship a usable SECRET_KEY default. If the env var is absent,
-# raise on import so production can't start accidentally with a public key.
-# `manage.py` (dev.py) can set a throwaway value explicitly.
+# SECRET_KEY is required in production. In dev, we allow a throwaway fallback
+# only when DJANGO_DEBUG=true, so `runserver` works without a .env file.
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
 if not SECRET_KEY:
-    raise ImproperlyConfigured(
-        "DJANGO_SECRET_KEY environment variable is required. "
-        "Generate one with: python -c "
-        "'from django.core.management.utils import get_random_secret_key; "
-        "print(get_random_secret_key())'"
-    )
+    if env_bool("DJANGO_DEBUG", False):
+        SECRET_KEY = "dev-only-not-secret-do-not-use-in-prod"
+    else:
+        raise ImproperlyConfigured(
+            "DJANGO_SECRET_KEY environment variable is required. "
+            "Generate one with: python -c "
+            "'from django.core.management.utils import get_random_secret_key; "
+            "print(get_random_secret_key())'"
+        )
 
-# FIX #2 — DEBUG is an env-driven setting; prod.py forces it False and raises
-# if it ends up True in production. Kept False as the safe default here.
 DEBUG = env_bool("DJANGO_DEBUG", False)
 
-# FIX #3 — ALLOWED_HOSTS must come from env; empty means "not configured" and
-# prod.py raises. No implicit "*" anywhere in the codebase.
+# ALLOWED_HOSTS must be set explicitly. Empty means "not configured";
+# prod.py raises on it. Never default to "*".
 ALLOWED_HOSTS = env_list("ALLOWED_HOSTS")
 
 
@@ -108,12 +111,12 @@ INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-    "csp.middleware.CSPMiddleware",                          # Content Security Policy
+    "csp.middleware.CSPMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
-    "django_otp.middleware.OTPMiddleware",                  # 2FA
+    "django_otp.middleware.OTPMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "apps.audit_logs.middleware.AuditLogMiddleware",
@@ -146,9 +149,6 @@ ASGI_APPLICATION = "config.asgi.application"
 # ---------------------------------------------------------------------------
 # Database — SQLite by default; PostgreSQL optional via env vars.
 # ---------------------------------------------------------------------------
-# FIX #13 — check the engine against the exact string Django expects, and
-# make the postgres branch fail loudly if required vars are missing rather
-# than silently connecting with defaults.
 if os.environ.get("DB_ENGINE") == "django.db.backends.postgresql":
     _required = ("DB_NAME", "DB_USER", "DB_PASSWORD", "DB_HOST")
     _missing = [k for k in _required if not os.environ.get(k)]
@@ -197,10 +197,7 @@ OTP_TOTP_ISSUER = os.environ.get("OTP_ISSUER", "School ERP")
 TWO_FACTOR_PATCH_LOGIN_REMEMBER = True
 TWO_FACTOR_REMEMBER_COOKIE_AGE = 30 * 86400  # 30 days
 
-# FIX #14 — validate forced roles against the real role enum (import lazily
-# so settings remains importable without Django apps fully loaded — this is
-# only a configuration list, so a plain set of strings is fine, but document
-# where the canonical values live).
+# Roles for which 2FA is enforced (values must match accounts.User.Role)
 TWO_FACTOR_FORCE_ROLES = {"super_admin", "hr_payroll", "accountant"}
 
 
@@ -213,24 +210,19 @@ RATELIMIT_VIEW = "apps.accounts.views.rate_limit_exceeded"
 
 
 # ---------------------------------------------------------------------------
-# Content Security Policy (CSP)
+# Content Security Policy
+# `'unsafe-inline'` is intentionally NOT allowed for scripts in base.
+# dev.py may add it; production should use nonces ({{ request.csp_nonce }}).
 # ---------------------------------------------------------------------------
-# FIX #4 — `'unsafe-inline'` on script-src effectively disables script
-# restrictions. If inline scripts are needed (Chart.js init, CSRF AJAX),
-# use nonces via django-csp's `CSP_SCRIPT_SRC` + `{{ request.csp_nonce }}`
-# in templates. In dev you may relax this, but production must not allow it.
 CSP_DEFAULT_SRC = ("'self'",)
 CSP_SCRIPT_SRC = (
     "'self'",
     "https://cdn.jsdelivr.net",
     "https://code.jquery.com",
-    # Add "'unsafe-inline'" ONLY in dev.py if you need it during development.
 )
 CSP_STYLE_SRC = (
     "'self'",
-    # FIX #4b — style-src unsafe-inline is still a hole (data exfil via CSS),
-    # but is far less severe than script-src. Prefer nonces where possible.
-    "'unsafe-inline'",
+    "'unsafe-inline'",   # low risk vs script-src; nonces preferred
     "https://cdn.jsdelivr.net",
     "https://fonts.googleapis.com",
 )
@@ -273,9 +265,6 @@ JAZZCASH_API_URL = os.environ.get(
     "https://sandbox.jazzcash.com.pk/ApplicationAPI/API/2.0/Payment/DoPayment",
 )
 
-# FIX #5 — one source of truth for the active gateway. `PAYMENT_GATEWAY_ENABLED`
-# below is derived; previously it was a separate hardcoded False that
-# contradicted ACTIVE_PAYMENT_GATEWAY="test".
 ACTIVE_PAYMENT_GATEWAY = os.environ.get("ACTIVE_PAYMENT_GATEWAY", "test")
 if ACTIVE_PAYMENT_GATEWAY not in ("stripe", "jazzcash", "test"):
     raise ImproperlyConfigured(
@@ -286,7 +275,7 @@ PAYMENT_GATEWAY_ENABLED = ACTIVE_PAYMENT_GATEWAY != "test"
 
 
 # ---------------------------------------------------------------------------
-# Email backend
+# Email — console in dev, SMTP configurable in prod
 # ---------------------------------------------------------------------------
 EMAIL_BACKEND = os.environ.get(
     "EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend"
@@ -298,8 +287,6 @@ EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
 EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@apslahore.edu.pk")
 
-# FIX #15 — if a real SMTP backend is configured, refuse to boot without
-# credentials so password-reset emails don't silently go to nowhere.
 if EMAIL_BACKEND.endswith("smtp.EmailBackend"):
     if not EMAIL_HOST_USER or not EMAIL_HOST_PASSWORD:
         raise ImproperlyConfigured(
@@ -352,9 +339,6 @@ SCHOOL_CURRENCY_SYMBOL = "Rs."
 SCHOOL_LATE_FEE_DAYS = env_int("SCHOOL_LATE_FEE_DAYS", 7)
 SCHOOL_LATE_FEE_AMOUNT = env_int("SCHOOL_LATE_FEE_AMOUNT", 500)
 
-# FIX #6 — the inline comment said "was SCH — now uses APS-2026-000001" but
-# the value was still "APS". Keep APS (which is what the comment implies) and
-# make the numbering hint explicit in the comment.
 SCHOOL_REGISTRATION_PREFIX = "APS"      # e.g. APS-2026-000001
 SCHOOL_CHALLAN_PREFIX = "CH"
 SCHOOL_RECEIPT_PREFIX = "RC"
