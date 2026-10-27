@@ -80,16 +80,32 @@ class AdmissionService:
     @classmethod
     @transaction.atomic
     def register_student(cls, admission: Admission, user) -> tuple[StudentModel, Admission]:
-        """Creates the Student record linked to this admission."""
+        """Creates the Student record linked to this admission.
+
+        Race-safety: we lock the Admission row first (SELECT ... FOR UPDATE),
+        then re-check `admission.student`. This guarantees that two concurrent
+        calls to register_student on the same admission cannot both create a
+        Student record — only the first wins, the second sees the FK populated
+        and returns early.
+        """
+        # Lock the admission row — serializes parallel register_student calls.
+        admission = Admission.objects.select_for_update().get(pk=admission.pk)
+
+        # Re-check status and student AFTER acquiring the lock — another
+        # concurrent call may have just transitioned the admission.
         if not cls.can_transition(admission.status, Admission.Status.REGISTERED):
+            # Idempotent: if the admission already has a student linked, just
+            # return that student (covers a parallel-call race).
+            if admission.student:
+                return admission.student, admission
             raise AdmissionWorkflowError("Admission must be APPROVED before registering a student.")
 
         if admission.student:
             return admission.student, admission
 
         from apps.parents.models import Parent
-        # FIX: Handle blank CNIC — use a unique fallback to avoid attaching
-        # all blank-CNIC parents to the same record
+        # Handle blank CNIC — use a unique fallback so we don't attach all
+        # blank-CNIC parents to the same shared Parent record.
         parent_cnic = admission.parent_cnic or f"TEMP-{admission.pk}"
         parent, _ = Parent.objects.get_or_create(
             cnic=parent_cnic,
@@ -102,10 +118,13 @@ class AdmissionService:
             },
         )
 
-        # FIX #9: Use get_or_create to prevent double-registration
-        # If the admission already has a student (checked above), return early.
-        # The admission.student check above handles this, but we add extra safety.
-        student, created = Student.objects.get_or_create(
+        # Create the student. We can't use get_or_create here because each new
+        # student gets a freshly-generated registration_no, which is by
+        # definition unique — so get_or_create would always CREATE. The race
+        # protection comes from the admission-row lock above: only the call that
+        # wins the lock reaches this line; the other call sees admission.student
+        # set and returns early.
+        student = Student.objects.create(
             registration_no=RegistrationNumberService.generate(),
             full_name=admission.full_name,
             father_name=admission.father_name,
@@ -141,11 +160,20 @@ class AdmissionService:
     @classmethod
     @transaction.atomic
     def generate_admission_challan(cls, admission: Admission, user) -> "FeeChallan":
-        """Generate an admission fee challan for this admission."""
-        from apps.fees.services.fee_service import FeeService
-        from apps.fees.models import FeeType
+        """Generate an admission fee challan for this admission.
+
+        The FeeChallan model requires a non-null Student FK, so we make sure
+        the student record exists first (calling register_student is idempotent —
+        if the student is already linked, it just returns the existing one).
+        """
+        # Ensure the student is registered before creating a challan linked to it.
+        if not admission.student:
+            cls.register_student(admission, user)
+            admission.refresh_from_db()
         if admission.admission_challan:
             return admission.admission_challan
+        from apps.fees.services.fee_service import FeeService
+        from apps.fees.models import FeeType
         admission_fee_type, _ = FeeType.objects.get_or_create(
             name="Admission Fee",
             defaults={
@@ -164,10 +192,18 @@ class AdmissionService:
     @transaction.atomic
     def complete_after_payment(cls, admission: Admission, user) -> Admission:
         """Called when the admission challan is paid."""
+        # Lock the admission to serialize complete_after_payment attempts.
+        admission = Admission.objects.select_for_update().get(pk=admission.pk)
         if not admission.admission_challan:
             raise AdmissionWorkflowError("Admission challan not generated yet.")
-        if admission.admission_challan.status != "paid":
+        # Use the FeeChallan.Status enum, not a magic string, for type safety.
+        from apps.fees.models import FeeChallan
+        paid_status = FeeChallan.Status.PAID
+        if admission.admission_challan.status != paid_status:
             raise AdmissionWorkflowError("Admission challan is not yet paid.")
+        # Idempotent — if the admission is already COMPLETED, just return it.
+        if admission.status == Admission.Status.COMPLETED:
+            return admission
         admission.status = Admission.Status.COMPLETED
         admission.save()
         return admission
