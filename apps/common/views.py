@@ -1,14 +1,13 @@
 """Common app views."""
 from django.contrib import messages
+from apps.accounts.mixins import StaffRequiredMixin
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
-from django.db.models import Q
+from django.db.models import Q, Count
 from django.shortcuts import get_object_or_404, redirect
-from django.urls import reverse
 from django.views.generic import (
     ListView, CreateView, DetailView, TemplateView, View,
 )
 
-from apps.accounts.mixins import StaffRequiredMixin
 from .models import AcademicYear, SchoolClass, Subject
 from .forms import AcademicYearForm, ClassForm, SubjectForm
 
@@ -26,24 +25,11 @@ class AcademicYearCreateView(LoginRequiredMixin, PermissionRequiredMixin, Create
     form_class = AcademicYearForm
     template_name = "common/academic_year_form.html"
     permission_required = "common.add_academicyear"
-    extra_context = {
-        "breadcrumbs": [
-            {"title": "Academic Years", "url": "/academic-years/"},
-            {"title": "New"},
-        ],
-    }
+    extra_context = {"breadcrumbs": [{"title": "Academic Years", "url": "/academic-years/"}, {"title": "New"}]}
 
     def get_success_url(self):
-        # Use reverse() rather than a hardcoded path so URL changes in
-        # urls.py don't silently break the redirect.
-        return reverse("common:academic_year_list")
-
-    def form_valid(self, form):
-        response = super().form_valid(form)
-        messages.success(
-            self.request, f"Academic Year '{self.object.name}' created."
-        )
-        return response
+        messages.success(self.request, f"Academic Year '{self.object.name}' created.")
+        return "/academic-years/"
 
 
 class AcademicYearDetailView(StaffRequiredMixin, DetailView):
@@ -57,28 +43,30 @@ class AcademicYearActivateView(LoginRequiredMixin, PermissionRequiredMixin, View
 
     def post(self, request, *args, **kwargs):
         year = get_object_or_404(AcademicYear, pk=kwargs["pk"])
-        # Only one active year at a time. Do the flip atomically so a crash
-        # mid-way can't leave the DB with two active years.
-        from django.db import transaction
-        with transaction.atomic():
-            AcademicYear.objects.exclude(pk=year.pk).filter(is_active=True).update(
-                is_active=False
-            )
-            if not year.is_active:
-                year.is_active = True
-                year.save(update_fields=["is_active"])
+        AcademicYear.objects.filter(is_active=True).update(is_active=False)
+        year.is_active = True
+        year.save()
         messages.success(request, f"{year.name} is now the active academic year.")
         return redirect("common:academic_year_list")
 
 
-class ClassListView(LoginRequiredMixin, ListView):
+class ClassListView(StaffRequiredMixin, ListView):
+    """List of all school classes. Staff-only — students access their own
+    class info via the portal (/portal/student/academic-year/), not via
+    this admin page."""
     model = SchoolClass
     template_name = "common/class_list.html"
     context_object_name = "classes"
     paginate_by = 25
 
     def get_queryset(self):
-        qs = super().get_queryset().prefetch_related("sections")
+        # prefetch_related sections + annotate student count to avoid
+        # the N+1 from calling Section.student_count in the template.
+        qs = (
+            SchoolClass.objects
+            .prefetch_related("sections")
+            .annotate(total_students=Count("students", filter=Q(students__status="active")))
+        )
         q = self.request.GET.get("q")
         if q:
             qs = qs.filter(name__icontains=q)
@@ -90,10 +78,15 @@ class ClassCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
     form_class = ClassForm
     template_name = "common/class_form.html"
     permission_required = "common.add_schoolclass"
-    success_url = "/classes/"
+
+    def get_success_url(self):
+        from django.urls import reverse
+        return reverse("common:class_list")
 
 
-class SubjectListView(LoginRequiredMixin, ListView):
+class SubjectListView(StaffRequiredMixin, ListView):
+    """List of all subjects. Staff-only — students see their subjects via
+    the portal syllabus view."""
     model = Subject
     template_name = "common/subject_list.html"
     context_object_name = "subjects"
@@ -105,10 +98,24 @@ class SubjectCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView)
     form_class = SubjectForm
     template_name = "common/subject_form.html"
     permission_required = "common.add_subject"
-    success_url = "/subjects/"
+
+    def get_success_url(self):
+        from django.urls import reverse
+        return reverse("common:subject_list")
 
 
 class GlobalSearchView(LoginRequiredMixin, TemplateView):
+    """Permission-aware global search. Returns ONLY the records the logged-in
+    user is allowed to see based on their role + Django permissions.
+
+    PII guard:
+      - Students see only their own records (no other students, no parents,
+        no challans except their own).
+      - Parents see only their linked children's records.
+      - Staff with the appropriate view_* permission see the full result set.
+      - Anyone without the right permission gets an empty result set for that
+        model — never an unfiltered leak.
+    """
     template_name = "common/search_results.html"
 
     def get_context_data(self, **kwargs):
@@ -118,39 +125,90 @@ class GlobalSearchView(LoginRequiredMixin, TemplateView):
         if not q:
             return ctx
 
-        # Lazy imports to avoid circulars.
         from apps.students.models import Student
         from apps.teachers.models import Teacher
         from apps.parents.models import Parent
         from apps.fees.models import FeeChallan
         from apps.examinations.models import ClassTest
 
-        # Role-scoped visibility: students/parents must never be able to
-        # search other students, other parents, staff, or fees. Staff get the
-        # full search. Everything else gets nothing beyond the query echo.
         user = self.request.user
-        is_staff = user.is_staff or getattr(user, "is_admin_staff", False)
+        is_staff = bool(user.is_superuser or user.role in {
+            "super_admin", "admin", "principal", "coordinator",
+            "accountant", "hr_payroll", "receptionist",
+        })
 
-        if not is_staff:
-            # Students and parents can only search within their own data.
-            ctx["students"] = Student.objects.none()
-            ctx["teachers"] = Teacher.objects.none()
-            ctx["parents"] = Parent.objects.none()
-            ctx["challans"] = FeeChallan.objects.none()
-            ctx["tests"] = ClassTest.objects.none()
-            return ctx
+        # ---- Students ----
+        # Only staff with view_student OR the student seeing their own record.
+        if is_staff and user.has_perm("students.view_student"):
+            ctx["students"] = Student.objects.filter(
+                Q(full_name__icontains=q) | Q(registration_no__icontains=q)
+            ).values_list("pk", "registration_no", "full_name", named=True)[:8]
+        elif user.role == "student":
+            student = getattr(user, "student_profile", None)
+            if student and (
+                q.lower() in student.full_name.lower()
+                or q.lower() in student.registration_no.lower()
+            ):
+                ctx["students"] = [student]  # only self — never other students
+            else:
+                ctx["students"] = []
+        else:
+            ctx["students"] = []
 
-        ctx["students"] = Student.objects.filter(
-            Q(full_name__icontains=q) | Q(registration_no__icontains=q)
-        )[:8]
-        ctx["teachers"] = Teacher.objects.filter(
-            Q(full_name__icontains=q) | Q(employee_id__icontains=q)
-        )[:8]
-        ctx["parents"] = Parent.objects.filter(
-            Q(full_name__icontains=q) | Q(cnic__icontains=q)
-        )[:8]
-        ctx["challans"] = FeeChallan.objects.filter(
-            challan_no__icontains=q
-        ).select_related("student")[:8]
-        ctx["tests"] = ClassTest.objects.filter(title__icontains=q)[:8]
+        # ---- Teachers ----
+        # Only staff with view_teacher.
+        if is_staff and user.has_perm("teachers.view_teacher"):
+            ctx["teachers"] = Teacher.objects.filter(
+                Q(full_name__icontains=q) | Q(employee_id__icontains=q)
+            ).values_list("pk", "employee_id", "full_name", named=True)[:8]
+        else:
+            ctx["teachers"] = []
+
+        # ---- Parents ----
+        # Only staff with view_parent (receptionist/admin). Parents/students
+        # never see other families' CNICs/phones.
+        if is_staff and user.has_perm("parents.view_parent"):
+            ctx["parents"] = Parent.objects.filter(
+                Q(full_name__icontains=q) | Q(cnic__icontains=q)
+            ).values_list("pk", "full_name", "cnic", named=True)[:8]
+        else:
+            ctx["parents"] = []
+
+        # ---- Fee challans ----
+        # Staff with view_feechallan see all; students/parents see only their own.
+        if is_staff and user.has_perm("fees.view_feechallan"):
+            ctx["challans"] = FeeChallan.objects.filter(challan_no__icontains=q)[:8]
+        elif user.role == "student":
+            student = getattr(user, "student_profile", None)
+            ctx["challans"] = (
+                student.fee_challans.filter(challan_no__icontains=q)[:8]
+                if student else []
+            )
+        elif user.role == "parent":
+            parent = getattr(user, "parent_profile", None)
+            if parent:
+                child_ids = parent.children.values_list("pk", flat=True)
+                ctx["challans"] = FeeChallan.objects.filter(
+                    challan_no__icontains=q, student_id__in=child_ids
+                )[:8]
+            else:
+                ctx["challans"] = []
+        else:
+            ctx["challans"] = []
+
+        # ---- Class tests ----
+        # Staff with view_classtest OR students seeing tests for their own class.
+        if is_staff and user.has_perm("examinations.view_classtest"):
+            ctx["tests"] = ClassTest.objects.filter(title__icontains=q)[:8]
+        elif user.role == "student":
+            student = getattr(user, "student_profile", None)
+            ctx["tests"] = (
+                ClassTest.objects.filter(
+                    title__icontains=q,
+                    school_class=student.current_class,
+                )[:8] if student else []
+            )
+        else:
+            ctx["tests"] = []
+
         return ctx
