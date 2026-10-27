@@ -6,7 +6,11 @@ from django.contrib.auth import views as auth_views
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import path, include
+from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.cache import never_cache
+from django_ratelimit.decorators import ratelimit
+from django.views.decorators.debug import sensitive_post_parameters
 
 
 
@@ -42,13 +46,33 @@ from two_factor.urls import core as two_factor_core
 from two_factor.urls import profile as two_factor_profile
 from two_factor.urls import plugin_urlpatterns as two_factor_plugin
 
+# Wrap the two_factor login view with rate limiting to prevent brute-force
+# password attacks. 5 login attempts/minute per IP — tight enough to stop
+# automated credential stuffing, loose enough for normal users who mistype.
+_login_patterns = []
+for pat in two_factor_core:
+    if getattr(pat, "name", None) == "login":
+        # Wrap the login view's view_func with ratelimit
+        original = pat.callback
+        # Apply rate limiting via a wrapper function
+        def _rate_limited_login(request, *args, **kwargs):
+            from django_ratelimit.decorators import ratelimit as _rl
+            decorator = _rl(key="ip", rate="5/m", method="POST", block=True)
+            wrapped = decorator(original)
+            if getattr(request, "limited", False):
+                from apps.accounts.views import rate_limit_exceeded
+                return rate_limit_exceeded(request)
+            return wrapped(request, *args, **kwargs)
+        pat.callback = _rate_limited_login
+    _login_patterns.append(pat)
+
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    # Root URL → APS Lahore school website landing page (green & gold theme)
+    # Root URL → school website landing page
     path("", landing_page_view, name="landing"),
-    # 2FA-enabled login + setup flow (django-two-factor-auth) — uses our custom MyAPS template
-    *two_factor_core,
+    # 2FA-enabled login (rate-limited) + setup flow
+    *_login_patterns,
     *two_factor_profile,
     *two_factor_plugin,
     # Fallback plain logout
