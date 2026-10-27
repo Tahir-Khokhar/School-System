@@ -10,18 +10,24 @@ Usage:
     ../scripts/commit_all.sh     # or: bash scripts/commit_all.sh
 """
 import os
+import shlex
 from pathlib import Path
 
 PROJECT_ROOT = Path("/home/z/my-project/school_erp")
 
-# Files to skip (build artifacts, OS junk, virtual envs)
-SKIP_PATTERNS = {
-    "__pycache__", ".pyc", ".pyo", ".pyd",
-    ".git", ".gitignore",  # we'll commit .gitignore separately first
-    "staticfiles", "db.sqlite3", "db.sqlite3-journal",
-    "venv", "env", ".env",  # never commit .env
-    ".DS_Store", "*.swp",
+# Files/dirs to skip (build artifacts, OS junk, virtual envs)
+SKIP_DIRS = {
+    "__pycache__", ".git", "staticfiles", "venv", "env",
+    ".mypy_cache", ".pytest_cache", ".ruff_cache", "node_modules",
+    "htmlcov", ".tox", ".idea", ".vscode",
 }
+SKIP_FILES = {
+    "db.sqlite3", "db.sqlite3-journal", ".env", ".DS_Store",
+}
+SKIP_EXTS = {".pyc", ".pyo", ".pyd", ".swp", ".sqlite3"}
+
+# Explicit files we DO want even though they start with a dot
+ALLOW_DOTFILES = {".gitignore", ".env.example", ".editorconfig", ".flake8"}
 
 # Order in which files should be committed — foundation first
 ORDER_PRECEDENCE = [
@@ -50,116 +56,116 @@ ORDER_PRECEDENCE = [
     "scripts/git_one_commit_per_file.py",
 ]
 
+# Within an app directory, prioritize files in this order
+APP_FILE_PRIORITY = {
+    "__init__.py": 0,
+    "apps.py": 1,
+    "models.py": 2,
+    "admin.py": 4,
+    "forms.py": 5,
+    "urls.py": 7,
+    "views.py": 8,
+    "tests.py": 9,
+    "middleware.py": 10,
+    "context_processors.py": 11,
+    "mixins.py": 12,
+}
+
 
 def should_skip(path: Path) -> bool:
-    parts = path.parts
+    rel = path.relative_to(PROJECT_ROOT)
+    parts = rel.parts
+
+    # Allow explicit dotfiles
+    if parts and parts[-1] in ALLOW_DOTFILES:
+        return False
+
     for part in parts:
-        if part in SKIP_PATTERNS or part.startswith("."):
+        if part in SKIP_DIRS:
             return True
-        if part.endswith(".pyc") or part == "__pycache__":
+        # Skip hidden files/dirs, but NOT explicit allow-list
+        if part.startswith(".") and part not in ALLOW_DOTFILES:
             return True
-    rel = str(path.relative_to(PROJECT_ROOT))
-    if rel.endswith(".pyc") or "__pycache__" in rel:
+
+    if parts and parts[-1] in SKIP_FILES:
         return True
-    if rel == ".env":
-        return True
-    if "staticfiles" in rel:
-        return True
-    if rel == "db.sqlite3":
+    if path.suffix in SKIP_EXTS:
         return True
     return False
 
 
 def sort_key(rel_path: str):
-    """Build a tuple sort key so files come out in a sensible order.
-    Order: meta → config → static → scripts → each app together
-    (__init__ → apps.py → models → migrations → admin → forms →
-    services → management → urls → views → tests → middleware etc.)
-    → templates → docs → tests."""
-    # Try to use the predefined order
+    """Return a sort tuple. Every position must be the same TYPE across all
+    returns to avoid `TypeError: '<' not supported between instances of
+    'int' and 'str'` when Python compares tuples element-by-element.
+
+    Strategy: pad every return to a 6-tuple:
+        (group, subgroup, priority_int, name_str, sub_int, extra_str)
+
+    group     : int  — top-level bucket (0=meta, 1=config, 2=apps,
+                       3=templates, 4=static, 5=docs, 6=tests, 7=fallback)
+    subgroup  : str  — app name / "00_top" / etc.
+    priority  : int  — file-type priority within the bucket
+    name      : str  — file/migration name for stable ordering
+    sub       : int  — secondary int for migration numbers
+    extra     : str  — tiebreaker
+    """
+    # Fixed precedence list
     for i, p in enumerate(ORDER_PRECEDENCE):
         if rel_path == p:
-            return (0, i, rel_path)
-    # Apps: keep each app's files together
+            return (0, "", i, rel_path, 0, "")
+
+    # Apps
     if rel_path.startswith("apps/"):
         parts = rel_path.split("/")
-        app_name = parts[1]
-        # File priority WITHIN an app
-        # __init__ → apps.py → models → migrations/__init__ → migrations/0001 →
-        # admin → forms → services → management → urls → views → tests →
-        # middleware / context_processors / mixins / etc.
-        if len(parts) == 3:
-            file = parts[2]
-            priority_map = {
-                "__init__.py": 0,
-                "apps.py": 1,
-                "models.py": 2,
-                "admin.py": 4,
-                "forms.py": 5,
-                "urls.py": 7,
-                "views.py": 8,
-                "tests.py": 9,
-                "middleware.py": 10,
-                "context_processors.py": 11,
-                "mixins.py": 12,
-            }
-            prio = priority_map.get(file, 13)
-            return (2, app_name, prio, file)
-        elif len(parts) >= 4 and parts[2] == "migrations":
-            mig = parts[3]
-            if mig == "__init__.py":
-                return (2, app_name, 3, 0, mig)
+        app = parts[1] if len(parts) > 1 else ""
+        if len(parts) == 2:  # apps/<app>/__init__.py handled below; this is bare dir
+            return (2, app, 0, "", 0, "")
+        rest = parts[2:]
+        if len(rest) == 1:
+            file = rest[0]
+            prio = APP_FILE_PRIORITY.get(file, 13)
+            return (2, app, prio, file, 0, "")
+        if rest[0] == "migrations":
+            if len(rest) == 2 and rest[1] == "__init__.py":
+                return (2, app, 3, "0000_init", 0, "")
+            mig = rest[-1]
             try:
                 num = int(mig.split("_")[0])
             except (ValueError, IndexError):
-                num = 99
-            return (2, app_name, 3, num, mig)
-        elif len(parts) >= 4 and parts[2] == "services":
-            svc = "/".join(parts[3:])
-            if svc == "__init__.py":
-                return (2, app_name, 6, 0, svc)
-            return (2, app_name, 6, 1, svc)
-        elif len(parts) >= 4 and parts[2] == "management":
-            sub = "/".join(parts[3:])
-            if sub == "__init__.py":
-                return (2, app_name, 6.5, 0, sub)
-            if sub == "commands/__init__.py":
-                return (2, app_name, 6.5, 1, sub)
-            return (2, app_name, 6.5, 2, sub)
-        return (2, app_name, 14, "/".join(parts[2:]))
-    # Templates (per app) — keep types consistent (all strings) to avoid
-    # str-vs-int comparison errors during sort
+                num = 9999
+            return (2, app, 3, mig, num, "")
+        if rest[0] == "services":
+            svc = "/".join(rest[1:])
+            return (2, app, 6, svc, 0, "")
+        if rest[0] == "management":
+            sub = "/".join(rest[1:])
+            return (2, app, 7, sub, 0, "")
+        return (2, app, 14, "/".join(rest), 0, "")
+
+    # Templates
     if rel_path.startswith("templates/"):
         parts = rel_path.split("/")
-        if len(parts) >= 2:
-            app_or_dir = parts[1]
-            # Use string prefixes so includes/registration come before app dirs
-            if app_or_dir == "includes":
-                return (3, "00_includes", rel_path)
-            if app_or_dir == "registration":
-                return (3, "01_registration", rel_path)
-            if parts[0] == "templates" and len(parts) == 2:
-                # top-level templates (e.g. base.html, landing.html)
-                return (3, "00_top", rel_path)
-            tmpl = parts[2] if len(parts) > 2 else ""
-            return (3, app_or_dir, tmpl)
-        return (3, "zz_fallback", rel_path)
-    # Static (already placed early via ORDER_PRECEDENCE; this catches extras)
+        if len(parts) == 2:
+            # e.g. templates/base.html, templates/landing.html
+            return (3, "00_top", 0, parts[1], 0, "")
+        sub = parts[1]
+        if sub == "includes":
+            return (3, "00_includes", 0, "/".join(parts[2:]), 0, "")
+        if sub == "registration":
+            return (3, "01_registration", 0, "/".join(parts[2:]), 0, "")
+        return (3, sub, 0, "/".join(parts[2:]), 0, "")
+
     if rel_path.startswith("static/"):
-        return (4, rel_path)
-    # Docs
+        return (4, "", 0, rel_path, 0, "")
     if rel_path.startswith("docs/"):
-        return (5, rel_path)
-    # Tests folder
+        return (5, "", 0, rel_path, 0, "")
     if rel_path.startswith("tests/"):
-        return (6, rel_path)
-    # Fallback
-    return (7, rel_path)
+        return (6, "", 0, rel_path, 0, "")
+    return (7, "", 0, rel_path, 0, "")
 
 
 def make_commit_message(rel_path: str) -> str:
-    """Generate a meaningful commit message based on file path."""
-    # Project meta
     if rel_path == "README.md":
         return "docs: add project README with setup and usage instructions"
     if rel_path == ".gitignore":
@@ -172,100 +178,84 @@ def make_commit_message(rel_path: str) -> str:
         return "build: pin base Python dependencies (Django, psycopg2, WeasyPrint)"
     if rel_path == "requirements/dev.txt":
         return "build: pin dev dependencies (extends base.txt)"
-    # Config
+
     if rel_path.startswith("config/"):
-        if rel_path == "config/__init__.py":
-            return "chore(config): add package init with default settings module"
-        if rel_path == "config/wsgi.py":
-            return "chore(config): add WSGI entry point"
-        if rel_path == "config/asgi.py":
-            return "chore(config): add ASGI entry point"
-        if rel_path == "config/urls.py":
-            return "feat(config): wire up root URL configuration for all apps"
-        if rel_path == "config/settings/__init__.py":
-            return "chore(config): add settings package init"
-        if rel_path == "config/settings/base.py":
-            return "feat(config): add base settings — INSTALLED_APPS, middleware, DB, auth, school config"
-        if rel_path == "config/settings/dev.py":
-            return "feat(config): add dev settings — DEBUG=True, SQLite fallback"
-        if rel_path == "config/settings/prod.py":
-            return "feat(config): add prod settings — security headers, HTTPS, env-driven"
-    # Static
+        mapping = {
+            "config/__init__.py": "chore(config): add package init with default settings module",
+            "config/wsgi.py": "chore(config): add WSGI entry point",
+            "config/asgi.py": "chore(config): add ASGI entry point",
+            "config/urls.py": "feat(config): wire up root URL configuration for all apps",
+            "config/settings/__init__.py": "chore(config): add settings package init",
+            "config/settings/base.py": "feat(config): add base settings — INSTALLED_APPS, middleware, DB, auth, school config",
+            "config/settings/dev.py": "feat(config): add dev settings — DEBUG=True, SQLite fallback",
+            "config/settings/prod.py": "feat(config): add prod settings — security headers, HTTPS, env-driven",
+        }
+        if rel_path in mapping:
+            return mapping[rel_path]
+
     if rel_path == "static/css/style.css":
         return "style: add premium UI stylesheet (sidebar, topbar, stat cards, dark mode, PAID stamp)"
     if rel_path == "static/js/app.js":
         return "feat(static): add app.js — theme toggle, sidebar, global search (Ctrl+K), toasts"
-    # Scripts
     if rel_path.startswith("scripts/"):
-        name = rel_path.split("/")[-1]
-        return f"chore(scripts): add {name}"
-    # Apps
+        return f"chore(scripts): add {rel_path.split('/')[-1]}"
+
     if rel_path.startswith("apps/"):
         parts = rel_path.split("/")
         app = parts[1]
         if len(parts) == 2:
             return f"chore({app}): add package marker"
         rest = "/".join(parts[2:])
-        if rest == "__init__.py":
-            return f"chore({app}): add package __init__"
-        if rest == "apps.py":
-            return f"feat({app}): register AppConfig with proper label and name"
-        if rest == "models.py":
-            return f"feat({app}): add models"
-        if rest == "admin.py":
-            return f"feat({app}): register models with Django admin (list_display, filters, inlines)"
-        if rest == "forms.py":
-            return f"feat({app}): add forms with crispy-forms helpers"
-        if rest == "urls.py":
-            return f"feat({app}): wire up app URL routing"
-        if rest == "views.py":
-            return f"feat({app}): add class-based views (ListView, CreateView, etc.)"
-        if rest == "tests.py":
-            return f"test({app}): add unit tests"
-        if rest == "middleware.py":
-            return f"feat({app}): add middleware"
-        if rest == "context_processors.py":
-            return f"feat({app}): add template context processor"
-        if rest == "mixins.py":
-            return f"feat({app}): add reusable view mixins"
+        exact = {
+            "__init__.py": f"chore({app}): add package __init__",
+            "apps.py": f"feat({app}): register AppConfig with proper label and name",
+            "models.py": f"feat({app}): add models",
+            "admin.py": f"feat({app}): register models with Django admin (list_display, filters, inlines)",
+            "forms.py": f"feat({app}): add forms with crispy-forms helpers",
+            "urls.py": f"feat({app}): wire up app URL routing",
+            "views.py": f"feat({app}): add class-based views (ListView, CreateView, etc.)",
+            "tests.py": f"test({app}): add unit tests",
+            "middleware.py": f"feat({app}): add middleware",
+            "context_processors.py": f"feat({app}): add template context processor",
+            "mixins.py": f"feat({app}): add reusable view mixins",
+        }
+        if rest in exact:
+            return exact[rest]
         if rest.startswith("services/"):
-            service_file = rest.split("/", 1)[1]
-            if service_file == "__init__.py":
+            sf = rest.split("/", 1)[1]
+            if sf == "__init__.py":
                 return f"chore({app}): add services package init"
-            service_name = service_file.replace(".py", "")
-            return f"feat({app}): add {service_name} service — business logic isolation"
+            return f"feat({app}): add {sf.replace('.py', '')} service — business logic isolation"
         if rest.startswith("management/"):
             sub = rest[len("management/"):]
             if sub == "__init__.py":
                 return f"chore({app}): add management package init"
             if sub == "commands/__init__.py":
                 return f"chore({app}): add management commands package init"
-            cmd_name = sub.split("/")[-1].replace(".py", "")
-            return f"feat({app}): add management command '{cmd_name}'"
+            cmd = sub.split("/")[-1].replace(".py", "")
+            return f"feat({app}): add management command '{cmd}'"
         if rest.startswith("migrations/"):
             mig = rest.split("/", 1)[1]
             if mig == "__init__.py":
                 return f"chore({app}): add migrations package init"
             return f"feat({app}): add migration {mig}"
         return f"feat({app}): add {rest}"
-    # Templates
+
     if rel_path.startswith("templates/"):
-        # e.g. templates/students/student_list.html
         parts = rel_path.split("/")
-        if len(parts) >= 3:
-            app = parts[1]
-            tmpl = parts[2]
-            tmpl_name = tmpl.replace(".html", "")
-            return f"feat({app}): add template '{tmpl_name}'"
-        if rel_path == "templates/base.html":
-            return "feat(templates): add base layout with sidebar, topbar, dark mode"
-        if rel_path.startswith("templates/includes/"):
-            inc = rel_path.split("/")[-1].replace(".html", "")
-            return f"feat(templates): add include partial '{inc}'"
-        if rel_path.startswith("templates/registration/"):
-            inc = rel_path.split("/")[-1].replace(".html", "")
-            return f"feat(templates): add registration template '{inc}'"
-        return f"feat(templates): add {rel_path}"
+        if len(parts) == 2:
+            name = parts[1].replace(".html", "")
+            if name == "base":
+                return "feat(templates): add base layout with sidebar, topbar, dark mode"
+            return f"feat(templates): add top-level template '{name}'"
+        app = parts[1]
+        tmpl = "/".join(parts[2:]).replace(".html", "")
+        if app == "includes":
+            return f"feat(templates): add include partial '{tmpl}'"
+        if app == "registration":
+            return f"feat(templates): add registration template '{tmpl}'"
+        return f"feat({app}): add template '{tmpl}'"
+
     if rel_path.startswith("docs/"):
         return f"docs: add {rel_path}"
     if rel_path.startswith("tests/"):
@@ -273,46 +263,47 @@ def make_commit_message(rel_path: str) -> str:
     return f"chore: add {rel_path}"
 
 
+def bash_quote(s: str) -> str:
+    """Safely quote a string for embedding in a bash script."""
+    return shlex.quote(s)
+
+
 def main():
-    # Collect all files
     files = []
     for root, dirs, fs in os.walk(PROJECT_ROOT):
-        # Modify dirs in place to skip excluded
-        dirs[:] = [d for d in dirs if d not in SKIP_PATTERNS and not d.startswith(".") and d != "__pycache__"]
-        for f in fs:
+        dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS and not d.startswith("."))
+        for f in sorted(fs):
             full = Path(root) / f
             if should_skip(full):
                 continue
             files.append(str(full.relative_to(PROJECT_ROOT)))
 
-    # Sort by our key
     files.sort(key=sort_key)
 
-    # Output bash script
     print("#!/usr/bin/env bash")
     print("# Auto-generated: one commit per file in the School ERP project.")
     print("# Run from the project root directory (school_erp/).")
-    print("set -e")
+    print("set -euo pipefail")
     print("")
-    print("cd \"$(dirname \"$0\")/..\" 2>/dev/null || cd \"$(pwd)\"")
+    print('cd "$(dirname "$0")/.." 2>/dev/null || cd "$(pwd)"')
     print("")
-    print("# Initialize git if needed")
     print("if [ ! -d .git ]; then")
     print("    git init -q")
     print("    git branch -M main 2>/dev/null || true")
     print("fi")
     print("")
-    print("# Set committer identity if not set (override via env if you want)")
+    print('# Set committer identity if not set (override via env if you want)')
     print('git config user.email >/dev/null 2>&1 || git config user.email "dev@school-erp.local"')
     print('git config user.name  >/dev/null 2>&1 || git config user.name  "School ERP Dev"')
     print("")
     total = len(files)
     for i, rel in enumerate(files, 1):
-        msg = make_commit_message(rel).replace("\"", "\\\"")
-        # Use --allow-empty just in case, but normally each file is a real add
-        print(f'# [{i}/{total}] {rel}')
-        print(f'git add -A -- "{rel}"')
-        print(f'git commit -q -m "{msg}" --no-verify 2>/dev/null || true')
+        msg = make_commit_message(rel)
+        qrel = bash_quote(rel)
+        qmsg = bash_quote(msg)
+        print(f"# [{i}/{total}] {rel}")
+        print(f"git add -- {qrel}")
+        print(f"git commit -q -m {qmsg} --no-verify")
         print("")
     print(f'echo "✓ Created {total} commits"')
     print('echo "Latest commit:"')
