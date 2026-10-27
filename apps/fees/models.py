@@ -66,15 +66,22 @@ class FeeChallan(TimeStampedModel):
         CANCELLED = "cancelled", "Cancelled"
 
     challan_no = models.CharField(max_length=20, unique=True, db_index=True, editable=False)
-    student = models.ForeignKey(Student, on_delete=models.PROTECT, related_name="fee_challans", null=True, blank=True)
+    student = models.ForeignKey(Student, on_delete=models.PROTECT, related_name="fee_challans")
     academic_year = models.ForeignKey(AcademicYear, on_delete=models.PROTECT, related_name="fee_challans")
     month = models.CharField(max_length=20, blank=True, help_text="e.g. October 2026")
     due_date = models.DateField(null=True, blank=True)
     issue_date = models.DateField(default=timezone.now)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.UNPAID, db_index=True)
     is_admission_challan = models.BooleanField(default=False)
+    # Frozen late-fee amount charged the FIRST time a payment hits the challan.
+    # Stays at 0 until the challan transitions to PARTIAL or PAID via a real payment,
+    # at which point we snapshot whatever late fee was due at that moment so the
+    # total_payable figure doesn't silently shrink later.
+    late_fee_charged = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        help_text="Late-fee amount frozen at first payment time.",
+    )
     notes = models.TextField(blank=True)
-    late_fee_charged = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL, null=True, blank=True,
@@ -98,6 +105,13 @@ class FeeChallan(TimeStampedModel):
 
     @property
     def late_fee(self):
+        # If a late fee was already charged at payment time, it's frozen on the
+        # challan — return it so the total_payable figure stays consistent after
+        # the challan is fully paid (otherwise balance would go negative).
+        if self.late_fee_charged and self.late_fee_charged > 0:
+            return Decimal(self.late_fee_charged)
+        # Otherwise compute the current late fee dynamically (only applies to
+        # unpaid/partial challans — calculate_late_fee returns 0 for PAID).
         from apps.fees.services.fee_service import FeeService
         return FeeService.calculate_late_fee(self)
 
@@ -107,7 +121,9 @@ class FeeChallan(TimeStampedModel):
 
     @property
     def total_payable(self):
-        return self.total_amount + self.late_fee - self.discount
+        # Clamp at zero — discount can never make the challan negative.
+        result = self.total_amount + self.late_fee - self.discount
+        return max(Decimal("0"), result)
 
     @property
     def total_paid(self):
@@ -115,7 +131,9 @@ class FeeChallan(TimeStampedModel):
 
     @property
     def balance(self):
-        return self.total_payable - self.total_paid
+        b = self.total_payable - self.total_paid
+        # Never report a negative outstanding balance.
+        return max(Decimal("0"), b)
 
 
 class FeeChallanItem(TimeStampedModel):
@@ -166,19 +184,38 @@ class FeePayment(TimeStampedModel):
 
     def save(self, *args, **kwargs):
         if not self.receipt_no:
+            # ReceiptNumberService.generate() opens its own transaction;
+            # we wrap in transaction.atomic() so that save + status update
+            # happen together. The challan row is locked via select_for_update
+            # to prevent a duplicate concurrent payment from sneaking in
+            # between this save() and the status update.
             self.receipt_no = ReceiptNumberService.generate()
         super().save(*args, **kwargs)
-        # Update challan status
+        # Update challan status atomically with the payment row lock.
         from apps.fees.services.fee_service import FeeService
-        FeeService.update_challan_status(self.challan)
+        with transaction.atomic():
+            challan = (
+                FeeChallan.objects
+                .select_for_update()
+                .get(pk=self.challan_id)
+            )
+            FeeService.update_challan_status(challan)
 
 
 class ReceiptNumberService:
+    """Race-safe: locks the last-issued receipt row before incrementing."""
     @classmethod
+    @transaction.atomic
     def generate(cls):
         year = timezone.now().year
         prefix = f"{settings.SCHOOL_RECEIPT_PREFIX}-{year}-"
-        last = FeePayment.objects.filter(receipt_no__startswith=prefix).order_by("-receipt_no").first()
+        last = (
+            FeePayment.objects
+            .select_for_update()
+            .filter(receipt_no__startswith=prefix)
+            .order_by("-receipt_no")
+            .first()
+        )
         if last:
             try:
                 seq = int(last.receipt_no.rsplit("-", 1)[-1]) + 1
@@ -190,11 +227,19 @@ class ReceiptNumberService:
 
 
 class ChallanNumberService:
+    """Race-safe: locks the last-issued challan row before incrementing."""
     @classmethod
+    @transaction.atomic
     def generate(cls):
         year = timezone.now().year
         prefix = f"{settings.SCHOOL_CHALLAN_PREFIX}-{year}-"
-        last = FeeChallan.objects.filter(challan_no__startswith=prefix).order_by("-challan_no").first()
+        last = (
+            FeeChallan.objects
+            .select_for_update()
+            .filter(challan_no__startswith=prefix)
+            .order_by("-challan_no")
+            .first()
+        )
         if last:
             try:
                 seq = int(last.challan_no.rsplit("-", 1)[-1]) + 1
