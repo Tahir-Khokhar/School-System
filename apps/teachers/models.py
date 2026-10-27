@@ -1,9 +1,10 @@
 """School ERP — teachers app. Includes bank-info model treated as sensitive."""
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 
 from apps.common.models import TimeStampedModel, SchoolClass, Section, Subject
+from apps.common.validators import validate_file_extension, validate_file_size
 
 
 class TeacherManager(models.Manager):
@@ -36,13 +37,23 @@ class Teacher(TimeStampedModel):
     employee_id = models.CharField(max_length=20, unique=True, db_index=True)
     full_name = models.CharField(max_length=200)
     father_name = models.CharField(max_length=200, blank=True)
-    cnic = models.CharField(max_length=20, blank=True)
+    cnic = models.CharField(
+        max_length=20, blank=True, db_index=True,
+        help_text="Format: XXXXX-XXXXXXX-X (Pakistani CNIC). Unique per teacher when non-empty.",
+    )
     date_of_birth = models.DateField(null=True, blank=True)
-    gender = models.CharField(max_length=10, choices=[("male","Male"),("female","Female")], default="male")
+    gender = models.CharField(
+        max_length=10,
+        choices=[("male", "Male"), ("female", "Female"), ("other", "Other")],
+        default="male",
+    )
     contact_phone = models.CharField(max_length=20, blank=True)
     email = models.EmailField(blank=True)
     address = models.TextField(blank=True)
-    photograph = models.ImageField(upload_to="teachers/", blank=True, null=True)
+    photograph = models.ImageField(
+        upload_to="teachers/", blank=True, null=True,
+        validators=[validate_file_extension, validate_file_size],
+    )
     qualification = models.CharField(max_length=200, blank=True)
     experience_years = models.PositiveIntegerField(default=0)
     joining_date = models.DateField(null=True, blank=True)
@@ -74,6 +85,13 @@ class Teacher(TimeStampedModel):
             models.Index(fields=["employee_id"]),
             models.Index(fields=["teaching_level", "staff_category"]),
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cnic"],
+                condition=~models.Q(cnic=""),
+                name="unique_teacher_cnic_when_nonempty",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.full_name} ({self.employee_id})"
@@ -102,13 +120,20 @@ class TeacherBankInfo(TimeStampedModel):
 
 
 # ---------------------------------------------------------------------------
-# Employee ID generator
+# Employee ID generator — race-safe with row lock.
 # ---------------------------------------------------------------------------
 class EmployeeIDService:
     @classmethod
+    @transaction.atomic
     def generate(cls):
         prefix = settings.SCHOOL_EMPLOYEE_PREFIX
-        last = Teacher.objects.filter(employee_id__startswith=f"{prefix}-").order_by("-employee_id").first()
+        last = (
+            Teacher.objects
+            .select_for_update()
+            .filter(employee_id__startswith=f"{prefix}-")
+            .order_by("-employee_id")
+            .first()
+        )
         if last:
             try:
                 seq = int(last.employee_id.rsplit("-", 1)[-1]) + 1
