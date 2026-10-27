@@ -1,74 +1,30 @@
 """
 Examination services — result calculation, grading, report card generation.
 """
-import logging
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-
+from decimal import Decimal
 from django.db import transaction
-from django.db.models import Sum
-
-from ..models import ExamResult, TermResult, TestResult
-
-logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-def _to_decimal(value, default=Decimal("0")):
-    if value is None or value == "":
-        return default
-    try:
-        d = value if isinstance(value, Decimal) else Decimal(str(value))
-    except (InvalidOperation, TypeError, ValueError):
-        return default
-    if d.is_nan() or d.is_infinite():
-        return default
-    return d
-
-
-def _pct(obtained, total):
-    """Return a quantized percentage Decimal, or 0 when total is 0."""
-    total = _to_decimal(total)
-    if not total:
-        return Decimal("0.00")
-    return (_to_decimal(obtained) / total * Decimal("100")).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
+from ..models import ClassTest, TestResult, ExamResult, TermResult
 
 
 class ResultService:
-    """All result calculation logic.
-
-    The grade boundaries below could be moved into a GradeScheme model later.
-    """
+    """All result calculation logic. The grade boundaries below can be made
+    configurable via a GradeScheme model — for now they live in settings."""
 
     GRADE_BOUNDARIES = [
-        (Decimal("90"), "A+"),
-        (Decimal("80"), "A"),
-        (Decimal("70"), "B"),
-        (Decimal("60"), "C"),
-        (Decimal("50"), "D"),
-        (Decimal("40"), "E"),
-        (Decimal("0"), "F"),
+        (90, "A+"),
+        (80, "A"),
+        (70, "B"),
+        (60, "C"),
+        (50, "D"),
+        (40, "E"),
+        (0,  "F"),
     ]
 
-    DEFAULT_WEIGHTS = {
-        "class_test": Decimal("0.2"),
-        "exam": Decimal("0.6"),
-        "homework": Decimal("0.2"),
-    }
-
-    # -------------------------------------------------------------------
-    # Grading
-    # -------------------------------------------------------------------
     @classmethod
     def grade_for_percentage(cls, percentage) -> str:
         try:
-            p = Decimal(str(percentage))
-        except (InvalidOperation, TypeError, ValueError):
-            return "—"
-        if p.is_nan() or p.is_infinite():
+            p = float(percentage)
+        except (TypeError, ValueError):
             return "—"
         for threshold, grade in cls.GRADE_BOUNDARIES:
             if p >= threshold:
@@ -76,212 +32,122 @@ class ResultService:
         return "F"
 
     # -------------------------------------------------------------------
-    # Class-test average (scoped: student + year + class + subject)
+    # Calculate a student's class-test average percentage for given
+    # subject + class. Each test contributes proportional to its
+    # total_marks — NOT a flat mean of percentages. A 10-mark quiz no
+    # longer counts the same as a 100-mark term exam.
     # -------------------------------------------------------------------
     @classmethod
-    def calculate_class_test_average(
-        cls, student, academic_year, school_class, subject
-    ):
-        agg = TestResult.objects.filter(
+    def calculate_class_test_average(cls, student, academic_year, school_class, subject):
+        results = TestResult.objects.filter(
             student=student,
             test__academic_year=academic_year,
             test__school_class=school_class,
             test__subject=subject,
             test__status="published",
-        ).aggregate(
-            obtained=Sum("obtained_marks"),
-            total=Sum("test__total_marks"),
-        )
-        return _pct(agg["obtained"], agg["total"])
+        ).select_related("test")
+        if not results.count():
+            return Decimal("0")
+        # Weighted by total_marks: sum(obtained) / sum(total) * 100
+        total_obtained = sum(r.obtained_marks for r in results)
+        total_max = sum(r.test.total_marks for r in results)
+        if total_max == 0:
+            return Decimal("0")
+        # Decimal-safe: round to 2 decimal places.
+        return Decimal(round((total_obtained / total_max) * 100, 2))
 
     # -------------------------------------------------------------------
-    # Class-test average (year-scoped, used by term calc)
+    # Calculate term result — weighted average of class-test component,
+    # exam component, and homework component. NEVER downgrades a
+    # PUBLISHED result back to SUBMITTED.
     # -------------------------------------------------------------------
     @classmethod
-    def _class_test_avg_unscoped(cls, student, academic_year):
-        agg = TestResult.objects.filter(
-            student=student,
-            test__academic_year=academic_year,
-            test__status="published",
-        ).aggregate(
-            obtained=Sum("obtained_marks"),
-            total=Sum("test__total_marks"),
-        )
-        return _pct(agg["obtained"], agg["total"])
+    @transaction.atomic
+    def calculate_term_result(cls, student, academic_year, term, weights=None):
+        """weights: dict like {'class_test': 0.2, 'exam': 0.6, 'homework': 0.2}
 
-    # -------------------------------------------------------------------
-    # Exam component
-    # -------------------------------------------------------------------
-    @classmethod
-    def calculate_exam_average(cls, student, academic_year, term, subject=None):
-        """Average % across exam subjects for the given term.
-
-        Rows whose subject has no `total_marks` are skipped — one bad
-        subject must not abort the whole term calculation.
+        Race-safe: locks the (student, academic_year, term) row before
+        writing. NEVER silently downgrades a PUBLISHED result — if the
+        existing result is PUBLISHED, returns it unchanged (the school
+        office must explicitly re-open it for editing).
         """
-        qs = ExamResult.objects.filter(
-            student=student,
-            exam_subject__exam__academic_year=academic_year,
+        weights = weights or {"class_test": Decimal("0.2"), "exam": Decimal("0.6"), "homework": Decimal("0.2")}
+
+        # --- Lock existing row (if any) to serialize parallel recalcs. ---
+        existing = (
+            TermResult.objects
+            .select_for_update()
+            .filter(student=student, academic_year=academic_year, term=term)
+            .first()
+        )
+        # --- Refuse to silently downgrade a published result. ---
+        if existing and existing.status == TermResult.Status.PUBLISHED:
+            return existing  # School office must explicitly re-open for edits.
+
+        # --- Class-test component (weighted by total_marks, not flat mean) ---
+        ct_results = TestResult.objects.filter(
+            student=student, test__academic_year=academic_year,
+            test__status="published"
+        ).select_related("test")
+        ct_pct = Decimal("0")
+        if ct_results.count():
+            ct_obtained = sum(r.obtained_marks for r in ct_results)
+            ct_max = sum(r.test.total_marks for r in ct_results)
+            if ct_max > 0:
+                ct_pct = Decimal(round((ct_obtained / ct_max) * 100, 2))
+
+        # --- Exam component (weighted by total_marks) ---
+        ex_results = ExamResult.objects.filter(
+            student=student, exam_subject__exam__academic_year=academic_year,
             exam_subject__exam__term=term,
         ).select_related("exam_subject")
+        ex_pct = Decimal("0")
+        if ex_results.count():
+            ex_obtained = sum(r.obtained_marks for r in ex_results)
+            ex_max = sum(r.exam_subject.total_marks for r in ex_results)
+            if ex_max > 0:
+                ex_pct = Decimal(round((ex_obtained / ex_max) * 100, 2))
 
-        if subject is not None:
-            qs = qs.filter(exam_subject__subject=subject)
-
-        obtained = Decimal("0")
-        total = Decimal("0")
-        for r in qs:
-            subj_total = _to_decimal(getattr(r.exam_subject, "total_marks", None))
-            if not subj_total:
-                logger.warning(
-                    "Skipping exam subject %s with total_marks=%r",
-                    r.exam_subject_id, subj_total,
-                )
-                continue
-            obtained += _to_decimal(r.obtained_marks)
-            total += subj_total
-
-        return _pct(obtained, total)
-
-    # -------------------------------------------------------------------
-    # Homework component
-    # -------------------------------------------------------------------
-    @classmethod
-    def calculate_homework_component(cls, student, academic_year, target=10):
-        """Map reviewed-homework count to 0–100, capped at 100.
-
-        `target` is the number of reviewed submissions equal to 100%.
-        """
+        # --- Homework component (count of reviewed homeworks) ---
         from apps.homework.models import HomeworkSubmission
-
-        count = HomeworkSubmission.objects.filter(
-            student=student,
-            is_reviewed=True,
+        hw_count = HomeworkSubmission.objects.filter(
+            student=student, is_reviewed=True,
             homework__academic_year=academic_year,
         ).count()
+        hw_pct = Decimal(min(hw_count * 10, 100))
 
-        if target <= 0:
-            return Decimal("0")
-        return min(
-            Decimal(count) * Decimal("100") / Decimal(target),
-            Decimal("100"),
-        )
-
-    # -------------------------------------------------------------------
-    # Term result (weighted aggregate)
-    # -------------------------------------------------------------------
-    @classmethod
-    def calculate_term_result(
-        cls, student, academic_year, term, weights=None, publish=False
-    ):
-        """Build or update a TermResult.
-
-        - `weights` must sum to 1.0; pass None for defaults.
-        - `publish=True` marks the result PUBLISHED.
-        - Calling with `publish=False` never downgrades a PUBLISHED result.
-        """
-        weights = dict(weights or cls.DEFAULT_WEIGHTS)
-
-        total_weight = sum(_to_decimal(v) for v in weights.values())
-        if total_weight != Decimal("1"):
-            raise ValueError(
-                f"Result weights must sum to 1.0, got {total_weight}. "
-                f"weights={weights}"
-            )
-
-        ct_avg = cls._class_test_avg_unscoped(student, academic_year)
-        ex_avg = cls.calculate_exam_average(student, academic_year, term)
-        hw_avg = cls.calculate_homework_component(student, academic_year)
-
+        # --- Weighted total (Decimal-safe — never floats) ---
+        ct_w = Decimal(weights.get("class_test", Decimal("0.2")))
+        ex_w = Decimal(weights.get("exam", Decimal("0.6")))
+        hw_w = Decimal(weights.get("homework", Decimal("0.2")))
         percentage = (
-            _to_decimal(weights.get("class_test")) * ct_avg
-            + _to_decimal(weights.get("exam")) * ex_avg
-            + _to_decimal(weights.get("homework")) * hw_avg
-        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-        with transaction.atomic():
-            obj, created = TermResult.objects.update_or_create(
-                student=student,
-                academic_year=academic_year,
-                term=term,
-                defaults={
-                    "total_marks": Decimal("100"),
-                    "obtained_marks": percentage,
-                    "percentage": percentage,
-                    "grade": cls.grade_for_percentage(percentage),
-                },
-            )
-
-            if publish:
-                if obj.status != TermResult.Status.PUBLISHED:
-                    obj.status = TermResult.Status.PUBLISHED
-                    obj.save(update_fields=["status"])
-            elif created and obj.status != TermResult.Status.SUBMITTED:
-                obj.status = TermResult.Status.SUBMITTED
-                obj.save(update_fields=["status"])
-
-        return obj
-
-    # -------------------------------------------------------------------
-    # Publish (idempotent)
-    # -------------------------------------------------------------------
-    @classmethod
-    def publish_term_result(cls, term_result):
-        """Return True if the status changed, False if already published."""
-        if term_result.status == TermResult.Status.PUBLISHED:
-            return False
-        term_result.status = TermResult.Status.PUBLISHED
-        term_result.save(update_fields=["status"])
-        return True
-
-    # -------------------------------------------------------------------
-    # Report-card data
-    # -------------------------------------------------------------------
-    @classmethod
-    def build_report_card_context(cls, term_result):
-        """Return the context dict for the report-card template.
-
-        Fails closed: a missing subject total produces a 0% line, never a
-        crash.
-        """
-        student = term_result.student
-        academic_year = term_result.academic_year
-        term = term_result.term
-
-        exam_results = (
-            ExamResult.objects
-            .filter(
-                student=student,
-                exam_subject__exam__academic_year=academic_year,
-                exam_subject__exam__term=term,
-            )
-            .select_related("exam_subject", "exam_subject__subject")
-            .order_by("exam_subject__subject__name")
+            ct_w * ct_pct +
+            ex_w * ex_pct +
+            hw_w * hw_pct
         )
+        # Round to 2 decimal places.
+        percentage = percentage.quantize(Decimal("0.01"))
 
-        subject_lines = []
-        for r in exam_results:
-            subj_total = _to_decimal(getattr(r.exam_subject, "total_marks", None))
-            pct = _pct(r.obtained_marks, subj_total)
-            subject_lines.append({
-                "subject": (
-                    r.exam_subject.subject.name
-                    if r.exam_subject.subject_id else "—"
-                ),
-                "total_marks": subj_total,
-                "obtained_marks": _to_decimal(r.obtained_marks),
-                "percentage": pct,
-                "grade": cls.grade_for_percentage(pct),
-                "remarks": getattr(r, "remarks", "") or "",
-            })
-
-        return {
-            "term_result": term_result,
-            "student": student,
-            "academic_year": academic_year,
-            "term": term,
-            "subject_lines": subject_lines,
-            "percentage": _to_decimal(term_result.percentage),
-            "grade": term_result.grade,
-            "is_published": term_result.status == TermResult.Status.PUBLISHED,
-        }
+        # Use the lock-protected row from above; create if absent.
+        if existing:
+            obj = existing
+            obj.total_marks = Decimal(100)
+            obj.obtained_marks = percentage
+            obj.percentage = percentage
+            obj.grade = cls.grade_for_percentage(float(percentage))
+            # Don't downgrade an existing PUBLISHED result (already
+            # checked above). New calculations land as SUBMITTED.
+            obj.status = TermResult.Status.SUBMITTED
+            obj.save(update_fields=[
+                "total_marks", "obtained_marks", "percentage", "grade", "status",
+            ])
+        else:
+            obj = TermResult.objects.create(
+                student=student, academic_year=academic_year, term=term,
+                total_marks=Decimal(100),
+                obtained_marks=percentage,
+                percentage=percentage,
+                grade=cls.grade_for_percentage(float(percentage)),
+                status=TermResult.Status.SUBMITTED,
+            )
+        return obj
