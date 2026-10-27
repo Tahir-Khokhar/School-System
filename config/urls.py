@@ -101,6 +101,7 @@ urlpatterns = [
     path("calendar/", include("apps.school_calendar.urls")),
     path("reports/", include("apps.reports.urls")),
     path("audit-logs/", include("apps.audit_logs.urls")),
+    path("documents/", include("apps.documents.urls")),
     path("portal/", include("apps.portal.urls")),
     # CSP report endpoint — receives violation reports from browsers
     path("csp-report/", csrf_exempt(lambda request: HttpResponse("OK", content_type="text/plain")),
