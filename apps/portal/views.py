@@ -272,7 +272,7 @@ class StudentReportCardView(StudentBaseMixin, DetailView):
     context_object_name = "result"
 
     def get_object(self, queryset=None):
-        result = get_object_or_404(TermResult, pk=self.kwargs["pk"])
+        result = get_object_or_404(TermResult, pk=self.kwargs["pk"], status=TermResult.Status.PUBLISHED)
         # SECURITY: verify this result belongs to the logged-in student
         if self.student and result.student_id != self.student.id:
             raise PermissionDenied("You cannot view another student's report card.")
@@ -631,7 +631,7 @@ class ParentChildReportCardView(ParentBaseMixin, DetailView):
     context_object_name = "result"
 
     def get_object(self, queryset=None):
-        result = get_object_or_404(TermResult, pk=self.kwargs["pk"])
+        result = get_object_or_404(TermResult, pk=self.kwargs["pk"], status=TermResult.Status.PUBLISHED)
         # SECURITY: verify this result belongs to a child of this parent
         if self.parent and not self.parent.children.filter(pk=result.student_id).exists():
             raise PermissionDenied("You cannot view another family's report card.")
