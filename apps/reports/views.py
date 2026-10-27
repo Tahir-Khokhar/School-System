@@ -1,116 +1,136 @@
-"""
-Report Center — high-level report index pages.
-Individual PDFs (challan, receipt, salary slip, report card) live in their respective apps.
-"""
-from decimal import Decimal
-from apps.accounts.mixins import StaffRequiredMixin
+from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
+from django.core.exceptions import PermissionDenied
 from django.http import HttpResponse
+from django.shortcuts import redirect, get_object_or_404
 from django.template.loader import render_to_string
-from django.views.generic import TemplateView, ListView
+from django.urls import reverse
+from django.views.generic import ListView, CreateView, DetailView, View, FormView
+from django.views.generic.detail import SingleObjectMixin
 
-from apps.students.models import Student
-from apps.fees.models import FeeChallan, FeePayment
-from apps.attendance.models import Attendance
-from apps.payroll.models import Payroll
+from apps.accounts.views import TwoFactorRequiredMixin
 from apps.teachers.models import Teacher
+from .models import Payroll, SalaryPayment, PayrollService
+from .forms import PayrollForm, SalaryPaymentForm
 
 
-class ReportIndexView(StaffRequiredMixin, TemplateView):
-    template_name = "reports/index.html"
+class PayrollAccessMixin(TwoFactorRequiredMixin):
+    """Only HR/Payroll role or superuser can view payroll.
 
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        ctx["breadcrumbs"] = [{"title": "Report Center"}]
-        return ctx
-
-
-class StudentReportView(StaffRequiredMixin, PermissionRequiredMixin, ListView):
-    model = Student
-    template_name = "reports/student_report.html"
-    context_object_name = "students"
-    paginate_by = 50
-    permission_required = "students.view_student"
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        ctx["breadcrumbs"] = [{"title": "Report Center", "url": "/reports/"}, {"title": "Students"}]
-        return ctx
+    Inherits TwoFactorRequiredMixin so HR users without a confirmed TOTP
+    device are redirected to /accounts/security/2fa/ before they can touch
+    any payroll record. Payroll is the highest-trust module — 2FA is
+    mandatory per TWO_FACTOR_FORCE_ROLES.
+    """
+    def dispatch(self, request, *args, **kwargs):
+        user = request.user
+        if not (user.is_superuser or user.role in {"super_admin", "hr_payroll"}):
+            raise PermissionDenied
+        return super().dispatch(request, *args, **kwargs)
 
 
-class FeeReportView(StaffRequiredMixin, PermissionRequiredMixin, ListView):
-    model = FeeChallan
-    template_name = "reports/fee_report.html"
-    context_object_name = "challans"
-    paginate_by = 50
-    permission_required = "fees.view_feechallan"
-
-    def get_queryset(self):
-        # Use .distinct() because previous filters OR'd queries together (can
-        # produce duplicate rows). Order by issue_date desc.
-        return (FeeChallan.objects
-                .select_related("student", "academic_year", "student__current_class")
-                .order_by("-issue_date"))
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        # Sum at the DB level (avoid Python-side iteration over the whole table).
-        # The previous code called self.get_queryset() TWICE — once for the
-        # paginated ListView and once for the totals — pulling the entire table
-        # into Python twice.
-        qs_for_totals = FeeChallan.objects.all()
-        ctx["total_collected"] = sum(
-            p.amount for p in FeePayment.objects.filter(is_successful=True)
-        ) or Decimal("0")
-        ctx["total_outstanding"] = sum(
-            c.balance for c in qs_for_totals if c.balance > 0
-        ) or Decimal("0")
-        return ctx
-
-
-class AttendanceReportView(StaffRequiredMixin, PermissionRequiredMixin, ListView):
-    model = Attendance
-    template_name = "reports/attendance_report.html"
-    context_object_name = "records"
-    paginate_by = 50
-    permission_required = "attendance.view_attendance"
-
-
-class PayrollReportView(StaffRequiredMixin, PermissionRequiredMixin, ListView):
+class PayrollListView(LoginRequiredMixin, PayrollAccessMixin, ListView):
     model = Payroll
-    template_name = "reports/payroll_report.html"
+    template_name = "payroll/payroll_list.html"
     context_object_name = "payrolls"
-    paginate_by = 50
-    permission_required = "payroll.view_payroll"
+    paginate_by = 25
 
     def get_queryset(self):
-        return Payroll.objects.select_related("teacher").order_by("-month")
+        qs = Payroll.objects.select_related("teacher")
+        status = self.request.GET.get("status")
+        if status:
+            qs = qs.filter(status=status)
+        q = self.request.GET.get("q")
+        if q:
+            qs = qs.filter(teacher__full_name__icontains=q) | qs.filter(teacher__employee_id__icontains=q)
+        return qs
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["status_choices"] = Payroll.Status.choices
+        ctx["breadcrumbs"] = [{"title": "Teacher Payroll"}]
+        return ctx
 
 
-class DefaulterReportPDFView(StaffRequiredMixin, PermissionRequiredMixin, ListView):
-    permission_required = "fees.view_feechallan"
-    template_name = "reports/defaulter_report.html"
+class PayrollCreateView(LoginRequiredMixin, PayrollAccessMixin, CreateView):
+    model = Payroll
+    form_class = PayrollForm
+    template_name = "payroll/payroll_form.html"
 
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["breadcrumbs"] = [
+            {"title": "Teacher Payroll", "url": reverse("payroll:payroll_list")},
+            {"title": "New"},
+        ]
+        return ctx
+
+    def get_initial(self):
+        initial = super().get_initial()
+        teacher_id = self.request.GET.get("teacher")
+        if teacher_id:
+            t = Teacher.objects.get(pk=teacher_id)
+            initial["teacher"] = t
+            initial["basic_salary"] = t.basic_salary
+        return initial
+
+    def get_success_url(self):
+        messages.success(self.request, "Payroll record created.")
+        return reverse("payroll:payroll_detail", args=[self.object.pk])
+
+
+class PayrollDetailView(LoginRequiredMixin, PayrollAccessMixin, DetailView):
+    model = Payroll
+    template_name = "payroll/payroll_detail.html"
+    context_object_name = "payroll"
+
+
+class PayrollApproveView(LoginRequiredMixin, PayrollAccessMixin, SingleObjectMixin, View):
+    model = Payroll
+
+    def post(self, request, *args, **kwargs):
+        p = self.get_object()
+        try:
+            PayrollService.approve_payroll(p, request.user)
+            messages.success(request, "Payroll approved.")
+        except ValueError as e:
+            messages.error(request, str(e))
+        return redirect("payroll:payroll_detail", pk=p.pk)
+
+
+class PayrollPayView(LoginRequiredMixin, PayrollAccessMixin, FormView):
+    template_name = "payroll/payroll_pay.html"
+    form_class = SalaryPaymentForm
+
+    def dispatch(self, request, *args, **kwargs):
+        self.payroll = get_object_or_404(Payroll, pk=kwargs["pk"])
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["payroll"] = self.payroll
+        return ctx
+
+    def form_valid(self, form):
+        try:
+            payment = PayrollService.record_bank_payment(
+                self.payroll, self.request.user,
+                method=form.cleaned_data["method"],
+                transaction_ref=form.cleaned_data["transaction_ref"],
+            )
+            messages.success(self.request, f"Payment of {payment.amount} recorded.")
+        except ValueError as e:
+            messages.error(self.request, str(e))
+            return self.form_invalid(form)
+        return redirect("payroll:payroll_detail", pk=self.payroll.pk)
+
+
+class SalarySlipPDFView(LoginRequiredMixin, PayrollAccessMixin, View):
     def get(self, request, *args, **kwargs):
         from weasyprint import HTML
-        from decimal import Decimal
-        challans = FeeChallan.objects.filter(
-            status__in=[FeeChallan.Status.UNPAID, FeeChallan.Status.PARTIAL, FeeChallan.Status.OVERDUE]
-        ).select_related("student", "academic_year", "student__current_class")
-        # Sum at the DB level using aggregate() — avoids loading every row.
-        from django.db.models import Sum
-        # Balance is a Python property; we approximate the total here by
-        # summing total_payable - total_paid at the Python layer for the
-        # PDF only. For large schools this should be a SQL-side aggregate;
-        # for a single-school defaulter report it's acceptable.
-        total_outstanding = sum(
-            (c.balance for c in challans if c.balance > 0),
-            Decimal("0"),
-        )
-        html = render_to_string("reports/defaulter_pdf.html", {
-            "challans": challans,
-            "total_outstanding": total_outstanding,
-            "is_pdf": True,
+        payroll = get_object_or_404(Payroll, pk=kwargs["pk"])
+        html = render_to_string("payroll/salary_slip.html", {
+            "payroll": payroll, "is_pdf": True,
         }, request=request)
         pdf = HTML(string=html, base_url=request.build_absolute_uri("/")).write_pdf()
         return HttpResponse(pdf, content_type="application/pdf")
