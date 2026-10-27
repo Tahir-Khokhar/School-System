@@ -1,11 +1,12 @@
-"""
-School ERP — common app.
+"""School ERP — common app.
 Shared models: AcademicYear, School, SchoolClass, Section, Subject.
 Plus the school context processor used everywhere in templates.
 """
 from django.db import models
 from django.core.cache import cache
 from django.conf import settings
+
+from apps.common.validators import validate_file_extension, validate_file_size
 
 
 class TimeStampedModel(models.Model):
@@ -57,7 +58,10 @@ class School(TimeStampedModel):
     address = models.TextField(blank=True)
     phone = models.CharField(max_length=50, blank=True)
     email = models.EmailField(blank=True)
-    logo = models.ImageField(upload_to="school/", blank=True, null=True)
+    logo = models.ImageField(
+        upload_to="school/", blank=True, null=True,
+        validators=[validate_file_extension, validate_file_size],
+    )
 
     class Meta:
         verbose_name = "School"
@@ -124,6 +128,16 @@ class Section(TimeStampedModel):
 
     @property
     def student_count(self):
+        """Active student count for this section.
+
+        Cached on the instance to avoid the N+1 query when listing many
+        sections at once (e.g. /classes/). Callers that need the count for
+        a queryset of sections should use:
+            sections.annotate(active_count=Count("students", filter=Q(students__status="active")))
+        instead of reading this property per-section.
+        """
+        if hasattr(self, "_student_count_cache"):
+            return self._student_count_cache
         from apps.students.models import Student
         return Student.objects.filter(current_section=self, status=Student.Status.ACTIVE).count()
 
