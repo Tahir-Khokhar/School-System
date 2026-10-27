@@ -10,6 +10,16 @@ class ClassTestForm(forms.ModelForm):
                   "date", "total_marks", "passing_marks", "topics", "status"]
         widgets = {"date": forms.DateInput(attrs={"type": "date"})}
 
+    def clean(self):
+        cleaned = super().clean()
+        total = cleaned.get("total_marks")
+        passing = cleaned.get("passing_marks")
+        if total is not None and passing is not None and passing > total:
+            raise forms.ValidationError(
+                f"Passing marks ({passing}) cannot exceed total marks ({total})."
+            )
+        return cleaned
+
 
 class SurpriseTestForm(forms.ModelForm):
     class Meta:
@@ -28,12 +38,32 @@ class ExamForm(forms.ModelForm):
             "end_date": forms.DateInput(attrs={"type": "date"}),
         }
 
+    def clean(self):
+        cleaned = super().clean()
+        start = cleaned.get("start_date")
+        end = cleaned.get("end_date")
+        if start and end and end < start:
+            raise forms.ValidationError(
+                "Exam end date cannot be earlier than the start date."
+            )
+        return cleaned
+
 
 class ExamSubjectForm(forms.ModelForm):
     class Meta:
         model = ExamSubject
         fields = ["exam", "subject", "school_class", "date", "total_marks", "passing_marks"]
         widgets = {"date": forms.DateInput(attrs={"type": "date"})}
+
+    def clean(self):
+        cleaned = super().clean()
+        total = cleaned.get("total_marks")
+        passing = cleaned.get("passing_marks")
+        if total is not None and passing is not None and passing > total:
+            raise forms.ValidationError(
+                f"Passing marks ({passing}) cannot exceed total marks ({total})."
+            )
+        return cleaned
 
 
 class TestResultForm(forms.ModelForm):
