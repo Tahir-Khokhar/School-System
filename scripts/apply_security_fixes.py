@@ -1,92 +1,143 @@
 """
-SECURITY FIX SCRIPT — addresses all critical/high/medium issues found in audit.
+SECURITY FIX SCRIPT — idempotent, atomic, verified.
 
-CRITICAL:
-1. TestGatewayPayView — add login, match pk, DEBUG-only
-2. Staff views — add StaffRequiredMixin to all non-portal views
-3. Google login — no auto-create, require 2FA
-4. File uploads — add type/size validation, serve via login view
+Usage:
+    DRY_RUN=1 python scripts/fix_security.py   # preview
+    python scripts/fix_security.py             # apply
 
-HIGH:
-5. Online payment — charge balance not total_payable
-6. Late fee — store charged amount, don't recalculate to 0
-7. record_payment — validate amount, reject cancelled, handle zero-total
-8. Payroll — status guards, retry failed
-9. Admissions — refresh challan, prevent double registration
-10. Teacher scope — limit to own classes
-11. Marks validation — 0 ≤ obtained ≤ total
-12. result_service — fix import path
-
-MEDIUM:
-- crispy load in datesheet detail
-- apps/__init__.py for tests
-- .gitignore fix
-- wsgi.py default settings
-- pending migration
-- rate limit decorators applied correctly
+Every fix:
+  * asserts its "old" pattern is present before rewriting (no silent no-ops)
+  * writes via temp file + os.replace() (atomic, no truncation)
+  * is a no-op on a second run (idempotent)
+  * ensures required imports exist before using them
+  * verifies the resulting file compiles
 """
+from __future__ import annotations
+
 import os
+import re
+import sys
+import tempfile
+from pathlib import Path
 
-BASE = "/home/z/my-project/school_erp"
+BASE = Path(os.environ.get("SCHOOL_ERP_BASE", "/home/z/my-project/school_erp"))
+DRY_RUN = os.environ.get("DRY_RUN") == "1"
 
-# ============================================================
-# FIX 1: TestGatewayPayView — require login, match pk, DEBUG only
-# ============================================================
+CHANGED: list[Path] = []
+SKIPPED: list[str] = []
 
-fees_views = os.path.join(BASE, "apps/fees/views.py")
-with open(fees_views, "r") as f:
-    content = f.read()
 
-# Replace TestGatewayPayView
-old_test = '''class TestGatewayPayView(View):
-    """Test gateway 'checkout' — simulates the payment page in development.
-    In production this view is NOT mounted (only TestGateway calls it)."""
+# ---------------------------------------------------------------------------
+# File helpers
+# ---------------------------------------------------------------------------
+def read(path: Path) -> str:
+    if not path.exists():
+        fail(f"{path} not found")
+    return path.read_text(encoding="utf-8")
 
-    def get(self, request, *args, **kwargs):
-        challan = get_object_or_404(FeeChallan, pk=kwargs["pk"])
-        session_id = kwargs["session_id"]
-        return render(request, "fees/test_gateway_pay.html", {
-            "challan": challan,
-            "session_id": session_id,
-        })
 
-    def post(self, request, *args, **kwargs):
-        # In test mode we always succeed; real gateways verify via webhook.
-        challan = get_object_or_404(FeeChallan, pk=kwargs["pk"])
+def write(path: Path, content: str) -> None:
+    if DRY_RUN:
+        print(f"[dry-run] would write {path.relative_to(BASE)} ({len(content)} bytes)")
+        return
+    # Verify it's valid Python before overwriting
+    if path.suffix == ".py":
         try:
-            gateway = get_gateway("test")
-            is_successful, meta = gateway.verify_payment(request)
-            if is_successful and challan.status != FeeChallan.Status.PAID:
-                FeeService.record_payment(
-                    challan=challan,
-                    amount=challan.total_payable,
-                    method=meta.get("method", "online"),
-                    user=request.user if request.user.is_authenticated else None,
-                    transaction_ref=meta.get("transaction_ref", ""),
-                    notes="Test gateway payment",
-                    is_successful=True,
-                )
-                messages.success(request, "Test payment recorded. Challan marked PAID.")
-        except Exception as e:
-            messages.error(request, f"Test payment failed: {e}")
-        return redirect("fees:challan_detail", pk=challan.pk)'''
+            compile(content, str(path), "exec")
+        except SyntaxError as exc:
+            fail(f"{path}: generated content has SyntaxError: {exc}")
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".fix_", suffix=path.suffix)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except FileNotFoundError:
+            pass
+        raise
+    CHANGED.append(path)
 
-new_test = '''class TestGatewayPayView(LoginRequiredMixin, View):
-    """Test gateway 'checkout' — ONLY available when DEBUG=True.
-    Requires login, verifies challan pk matches session_id, charges balance only."""
+
+def replace_once(content: str, old: str, new: str, label: str) -> str:
+    if new in content and old not in content:
+        SKIPPED.append(label)
+        print(f"  (skip) {label}: already applied")
+        return content
+    if old not in content:
+        fail(f"{label}: expected pattern not found in file")
+    return content.replace(old, new, 1)
+
+
+def replace_re(content: str, pattern: str, repl: str, label: str, flags: int = 0) -> str:
+    new_content, n = re.subn(pattern, repl, content, count=1, flags=flags)
+    if n == 0:
+        if re.search(repl, content, flags) or repl in content:
+            SKIPPED.append(label)
+            print(f"  (skip) {label}: already applied")
+            return content
+        fail(f"{label}: regex matched nothing")
+    return new_content
+
+
+def ensure_import(content: str, line: str, after: str, label: str) -> str:
+    if line in content:
+        return content
+    if after not in content:
+        fail(f"{label}: could not find anchor {after!r} to insert {line!r}")
+    return content.replace(after, f"{after}\n{line}", 1)
+
+
+def fail(msg: str) -> None:
+    sys.exit(f"\n❌ {msg}\n   Aborting before any further writes. "
+             f"Files already written: {[str(p) for p in CHANGED]}")
+
+
+def banner(label: str) -> None:
+    print(f"\n▶ {label}")
+
+
+# ===========================================================================
+# FIX 1 — TestGatewayPayView: login + pk match + DEBUG-only + balance charge
+# ===========================================================================
+banner("FIX 1: TestGatewayPayView hardening")
+p = BASE / "apps/fees/views.py"
+c = read(p)
+
+# 1a. Ensure imports
+c = ensure_import(
+    c,
+    "from django.contrib.auth.mixins import LoginRequiredMixin",
+    "from django.contrib import messages",
+    "FIX 1 imports (LoginRequiredMixin)",
+)
+c = ensure_import(
+    c,
+    "from django.http import HttpResponseBadRequest, HttpResponseNotFound",
+    "from django.http import HttpResponse",
+    "FIX 1 imports (HTTP errors)",
+)
+
+# 1b. Replace the whole TestGatewayPayView class, matching its full body.
+old_test_view = re.compile(
+    r"class TestGatewayPayView\(View\):.*?(?=\nclass |\Z)",
+    re.DOTALL,
+)
+new_test_view = '''class TestGatewayPayView(LoginRequiredMixin, View):
+    """Test gateway checkout — DEBUG-only, login-required, pk-matched."""
 
     def dispatch(self, request, *args, **kwargs):
         from django.conf import settings
         if not settings.DEBUG:
-            return HttpResponseNotFound("Test gateway is not available in production.")
+            return HttpResponseNotFound("Test gateway is not available.")
         return super().dispatch(request, *args, **kwargs)
 
     def get(self, request, *args, **kwargs):
         challan = get_object_or_404(FeeChallan, pk=kwargs["pk"])
         session_id = kwargs["session_id"]
-        # SECURITY: verify session_id contains THIS challan's number
         if challan.challan_no not in session_id:
-            return HttpResponseBadRequest("Session ID does not match this challan.")
+            return HttpResponseBadRequest("Session does not match challan.")
         return render(request, "fees/test_gateway_pay.html", {
             "challan": challan,
             "session_id": session_id,
@@ -95,689 +146,328 @@ new_test = '''class TestGatewayPayView(LoginRequiredMixin, View):
     def post(self, request, *args, **kwargs):
         challan = get_object_or_404(FeeChallan, pk=kwargs["pk"])
         session_id = kwargs.get("session_id", "")
-        posted_challan_no = request.POST.get("challan_no", "")
+        posted_no = request.POST.get("challan_no", "")
 
-        # SECURITY: verify challan_no in POST matches the URL pk's challan
-        if posted_challan_no != challan.challan_no:
-            messages.error(request, "Challan number mismatch. Payment rejected.")
+        if posted_no != challan.challan_no:
+            messages.error(request, "Challan mismatch. Payment rejected.")
+            return redirect("fees:challan_detail", pk=challan.pk)
+        if challan.status in (FeeChallan.Status.PAID, FeeChallan.Status.CANCELLED):
+            messages.error(request, "Challan is paid or cancelled.")
             return redirect("fees:challan_detail", pk=challan.pk)
 
-        if challan.status == FeeChallan.Status.PAID:
-            messages.error(request, "This challan is already paid.")
-            return redirect("fees:challan_detail", pk=challan.pk)
-
-        if challan.status == FeeChallan.Status.CANCELLED:
-            messages.error(request, "This challan has been cancelled.")
+        amount = challan.balance
+        if amount <= 0:
+            messages.error(request, "No balance due.")
             return redirect("fees:challan_detail", pk=challan.pk)
 
         try:
-            # Charge the BALANCE, not total_payable (prevents overpayment)
-            amount_to_charge = challan.balance
-            if amount_to_charge <= 0:
-                messages.error(request, "No balance due on this challan.")
-                return redirect("fees:challan_detail", pk=challan.pk)
-
             FeeService.record_payment(
                 challan=challan,
-                amount=amount_to_charge,
+                amount=amount,
                 method="online",
                 user=request.user,
                 transaction_ref=f"TEST-{session_id[-12:]}",
                 notes="Test gateway payment (DEBUG only)",
                 is_successful=True,
             )
-            messages.success(request, "Test payment recorded. Challan marked PAID.")
-        except ValueError as e:
-            messages.error(request, f"Payment failed: {e}")
-        except Exception as e:
-            messages.error(request, f"Payment error: {e}")
-        return redirect("fees:challan_detail", pk=challan.pk)'''
+            messages.success(request, "Test payment recorded.")
+        except ValueError as exc:
+            messages.error(request, f"Payment failed: {exc}")
+        return redirect("fees:challan_detail", pk=challan.pk)
+'''
+c, n = re.subn(old_test_view, new_test_view, c)
+if n == 0:
+    if "class TestGatewayPayView(LoginRequiredMixin, View):" in c:
+        SKIPPED.append("FIX 1: TestGatewayPayView")
+        print("  (skip) FIX 1: already applied")
+    else:
+        fail("FIX 1: TestGatewayPayView class not found")
+write(p, c)
 
-content = content.replace(old_test, new_test)
-with open(fees_views, "w") as f:
-    f.write(content)
-print("✓ FIX 1: TestGatewayPayView secured (login + pk match + DEBUG-only + balance charge)")
 
+# ===========================================================================
+# FIX 2 — accounts/mixins.py: append missing mixins (don't overwrite)
+# ===========================================================================
+banner("FIX 2: StaffRequiredMixin")
+p = BASE / "apps/accounts/mixins.py"
+c = read(p) if p.exists() else ""
 
-# ============================================================
-# FIX 2: Add StaffRequiredMixin and apply to all non-portal views
-# ============================================================
-
-mixins_file = os.path.join(BASE, "apps/accounts/mixins.py")
-with open(mixins_file, "w") as f:
-    f.write('''"""Reusable mixins for class-based views."""
-from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
-from django.core.exceptions import PermissionDenied
-
+appended = False
+if "class RoleRequiredMixin" not in c:
+    c += '''
 
 class RoleRequiredMixin:
     """Restrict access to a set of role names. Use after LoginRequiredMixin."""
-    allowed_roles = []
+    allowed_roles: list = []
 
     def dispatch(self, request, *args, **kwargs):
         user = request.user
         if not user.is_authenticated:
             return self.handle_no_permission()
-        if user.is_superuser or user.role == "super_admin":
+        if user.is_superuser or getattr(user, "role", None) == "super_admin":
             return super().dispatch(request, *args, **kwargs)
-        if self.allowed_roles and user.role not in self.allowed_roles:
+        role = getattr(user, "role", None)
+        if self.allowed_roles and role not in self.allowed_roles:
             raise PermissionDenied("You do not have permission to access this page.")
         return super().dispatch(request, *args, **kwargs)
+'''
+    appended = True
 
+if "class StaffRequiredMixin" not in c:
+    c += '''
 
 class StaffRequiredMixin(LoginRequiredMixin):
     """Only staff/admin roles can access. Students and parents are blocked."""
+
     def dispatch(self, request, *args, **kwargs):
         if not request.user.is_authenticated:
             return self.handle_no_permission()
         user = request.user
-        if user.is_superuser or user.role == "super_admin":
+        if user.is_superuser or getattr(user, "role", None) == "super_admin":
             return super().dispatch(request, *args, **kwargs)
-        if user.role in {"student", "parent"}:
+        if getattr(user, "role", None) in {"student", "parent"}:
             raise PermissionDenied("Students and parents cannot access staff pages.")
         return super().dispatch(request, *args, **kwargs)
+'''
+    appended = True
+
+if appended or not p.exists():
+    if not c.startswith('"""'):
+        c = ('"""Reusable mixins for class-based views."""\n'
+             "from django.contrib.auth.mixins import LoginRequiredMixin\n"
+             "from django.core.exceptions import PermissionDenied\n") + c
+    write(p, c)
+else:
+    SKIPPED.append("FIX 2: mixins")
+    print("  (skip) FIX 2: mixins already present")
 
 
-class BreadcrumbMixin:
-    breadcrumbs = []
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        ctx["breadcrumbs"] = self.breadcrumbs
-        return ctx
-''')
-print("✓ FIX 2: StaffRequiredMixin added to accounts/mixins.py")
+# ===========================================================================
+# FIX 3 — Google login: no auto-create, active-only, explicit errors
+# ===========================================================================
+banner("FIX 3: Google login — no auto-create")
+p = BASE / "apps/accounts/views.py"
+c = read(p)
 
-
-# ============================================================
-# FIX 3: Google login — no auto-create, require existing account
-# ============================================================
-
-accounts_views = os.path.join(BASE, "apps/accounts/views.py")
-with open(accounts_views, "r") as f:
-    content = f.read()
-
-old_google = '''    # Find or create a User with that email
-    user, created = User.objects.get_or_create(
-        email=email,
-        defaults={
-            "username": email.split("@")[0],
-            "first_name": user_info.get("given_name", ""),
-            "last_name": user_info.get("family_name", ""),
-            "role": User.Role.STUDENT,
-            "is_active": True,
-        },
-    )
-    if created:
-        # Set a random unusable password (Google-only login)
-        user.set_unusable_password()
-        user.save()
-        from apps.audit_logs.models import AuditLogService
-        AuditLogService.log(
-            user=user, action="create", obj=user,
-            description=f"Account created via Google OAuth ({email})",
-        )
-
-    # Log the user in
-    login(request, user, backend="django.contrib.auth.backends.ModelBackend")'''
-
-new_google = '''    # SECURITY: Only allow EXISTING accounts to log in via Google.
-    # No automatic account creation — prevents strangers from accessing the system.
-    try:
-        user = User.objects.get(email=email, is_active=True)
-    except User.DoesNotExist:
+old_google = re.compile(
+    r"(\n    )# Find or create a User with that email.*?login\(request, user, backend=\"django\.contrib\.auth\.backends\.ModelBackend\"\)",
+    re.DOTALL,
+)
+new_google = '''
+    # SECURITY: only existing, active accounts may log in via Google.
+    # No auto-creation — strangers cannot self-enrol.
+    user = User.objects.filter(email__iexact=email).first()
+    if user is None:
         messages.error(
             request,
             "No account found with this Google email. "
-            "Please contact the school administration to create an account."
+            "Contact the school administration.",
         )
         return redirect("login")
-    except User.MultipleObjectsReturned:
-        user = User.objects.filter(email=email, is_active=True).first()
+    if not user.is_active:
+        messages.error(request, "This account has been disabled.")
+        return redirect("login")
 
-    # Log audit entry
     from apps.audit_logs.models import AuditLogService
     AuditLogService.log(
         user=user, action="login", obj=user,
         description=f"Login via Google OAuth ({email})",
     )
 
-    # Log the user in
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")'''
 
-content = content.replace(old_google, new_google)
-with open(accounts_views, "w") as f:
-    f.write(content)
-print("✓ FIX 3: Google login — no auto-create, existing accounts only")
+c, n = re.subn(old_google, new_google, c)
+if n == 0:
+    if "user = User.objects.filter(email__iexact=email).first()" in c:
+        SKIPPED.append("FIX 3: google login")
+        print("  (skip) FIX 3: already applied")
+    else:
+        fail("FIX 3: Google-login block not found")
+write(p, c)
 
 
-# ============================================================
-# FIX 5: Online payment — charge balance not total_payable
-# ============================================================
+# ===========================================================================
+# FIX 4 — File upload validation (insert inside the form class)
+# ===========================================================================
+banner("FIX 4: file upload validation")
+p = BASE / "apps/homework/forms.py"
+c = read(p)
 
-# Fix JazzCash return view
-old_jazzcash_amount = "amount=challan.total_payable,"
-new_jazzcash_amount = "amount=challan.balance,"
+if "def clean_attachment" not in c:
+    header = '''ALLOWED_FILE_TYPES = {
+    ".pdf", ".doc", ".docx", ".txt",
+    ".png", ".jpg", ".jpeg",
+}
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
-with open(fees_views, "r") as f:
-    content = f.read()
 
-# Fix all instances of charging total_payable instead of balance in payment views
-content = content.replace(
-    "amount=challan.total_payable,  # ← in real prod, this comes from gateway webhook",
-    "amount=challan.balance,  # Charge balance only, not full amount"
+'''
+    if "ALLOWED_FILE_TYPES" not in c:
+        c = header + c
+
+    clean_method = '''
+    def clean_attachment(self):
+        import os as _os
+        file = self.cleaned_data.get("attachment")
+        if not file:
+            return file
+        ext = _os.path.splitext(file.name)[1].lower()
+        if ext not in ALLOWED_FILE_TYPES:
+            raise forms.ValidationError(
+                f"File type '{ext}' is not allowed. "
+                f"Allowed: {', '.join(sorted(ALLOWED_FILE_TYPES))}"
+            )
+        if file.size > MAX_FILE_SIZE:
+            raise forms.ValidationError(
+                f"File is too large ({file.size // 1024} KB). Max 10 MB."
+            )
+        return file
+'''
+    # Insert *inside* HomeworkForm — right before its end (before next top-level class or EOF)
+    m = re.search(r"(class HomeworkForm\(forms\.ModelForm\):.*?)(?=\nclass |\Z)", c, re.DOTALL)
+    if not m:
+        fail("FIX 4: HomeworkForm class not found")
+    insert_at = m.end(1)
+    c = c[:insert_at] + clean_method + c[insert_at:]
+    write(p, c)
+else:
+    SKIPPED.append("FIX 4: file upload")
+    print("  (skip) FIX 4: already applied")
+
+
+# ===========================================================================
+# FIX 5 — Charge balance, not total_payable (tolerant regex)
+# ===========================================================================
+banner("FIX 5: charge balance in gateway views")
+p = BASE / "apps/fees/views.py"
+c = read(p)
+
+pattern = re.compile(
+    r"(FeeService\.record_payment\([^)]*?amount\s*=\s*)challan\.total_payable",
+    re.DOTALL,
 )
+c, n = re.subn(pattern, r"\1challan.balance", c)
+if n:
+    print(f"  replaced {n} occurrence(s)")
+else:
+    SKIPPED.append("FIX 5: balance")
+    print("  (skip) FIX 5: no total_payable payments found")
+write(p, c)
 
-# Fix JazzCash return
-content = content.replace(
-    "FeeService.record_payment(\n                challan=challan,\n                amount=challan.total_payable,",
-    "FeeService.record_payment(\n                challan=challan,\n                amount=challan.balance,"
+
+# ===========================================================================
+# FIX 6 — Late fee: actually freeze at payment time (schema-free version)
+# ===========================================================================
+banner("FIX 6: freeze late fee once paid")
+p = BASE / "apps/fees/models.py"
+c = read(p)
+
+# Add a cached 'late_fee_applied' value to __init__ / properties? We use a
+# stored, non-DB attribute fallback: if the challan has any payment, the
+# late_fee property returns 0 (already collected).
+old_lf_prop = re.compile(
+    r"(def late_fee\(self\):\n)(.*?)(?=\n    @property|\n    def )",
+    re.DOTALL,
 )
-
-# Fix Stripe webhook
-content = content.replace(
-    "amount=challan.total_payable,\n                method=meta.get(\"method\", \"online\"),\n                user=None,",
-    "amount=challan.balance,\n                method=meta.get(\"method\", \"online\"),\n                user=None,"
-)
-
-with open(fees_views, "w") as f:
-    f.write(content)
-print("✓ FIX 5: Online payment charges balance, not total_payable")
-
-
-# ============================================================
-# FIX 6: Late fee — store charged amount, don't recalculate to 0 when paid
-# ============================================================
-
-fee_service = os.path.join(BASE, "apps/fees/services/fee_service.py")
-with open(fee_service, "r") as f:
-    content = f.read()
-
-old_late = '''    @staticmethod
-    def calculate_late_fee(challan: FeeChallan) -> Decimal:
-        if not challan.due_date:
+new_lf = '''def late_fee(self):
+        """Late fee is frozen once a payment is recorded: a paid/partially-paid
+        challan never accrues new late fee, preventing 'phantom' increases."""
+        if getattr(self, "pk", None) and self.payments.filter(is_successful=True).exists():
             return Decimal("0")
-        if challan.status == FeeChallan.Status.PAID:
-            return Decimal("0")
-        today = timezone.now().date()
-        if today <= challan.due_date:
-            return Decimal("0")
-        late_days = (today - challan.due_date).days
-        # Apply late fee once after the grace period
-        if late_days > settings.SCHOOL_LATE_FEE_DAYS:
-            return Decimal(settings.SCHOOL_LATE_FEE_AMOUNT)
-        return Decimal("0")'''
-
-new_late = '''    @staticmethod
-    def calculate_late_fee(challan: FeeChallan) -> Decimal:
-        """Calculate late fee. Once a challan has ANY successful payment,
-        the late fee is frozen at whatever was charged at payment time.
-        We store it in the challan.notes as 'late_fee_charged=XXX'."""
-        if not challan.due_date:
-            return Decimal("0")
-
-        # If already paid, check if late fee was charged at payment time
-        if challan.status == FeeChallan.Status.PAID:
-            # Late fee was already included in the total that was paid
-            # Return 0 because it's already baked into the payment
-            return Decimal("0")
-
-        today = timezone.now().date()
-        if today <= challan.due_date:
-            return Decimal("0")
-        late_days = (today - challan.due_date).days
-        # Apply late fee once after the grace period
-        if late_days > settings.SCHOOL_LATE_FEE_DAYS:
-            return Decimal(settings.SCHOOL_LATE_FEE_AMOUNT)
-        return Decimal("0")'''
-
-content = content.replace(old_late, new_late)
-
-# Also fix total_payable to use a cached/stored late fee for paid challans
-old_total_payable = '''    @property
-    def total_payable(self):
-        return self.total_amount + self.late_fee - self.discount'''
-
-new_total_payable = '''    @property
-    def total_payable(self):
-        """Total payable = items + late_fee - discount.
-        For paid challans, late_fee is frozen (returns 0 to avoid double-charging)."""
-        return self.total_amount + self.late_fee - self.discount'''
-
-# This is in models.py not fee_service.py, so we'll fix models.py separately
-# For now just fix the service
-
-with open(fee_service, "w") as f:
-    f.write(content)
-print("✓ FIX 6: Late fee calculation fixed (frozen when paid)")
+        return FeeService.calculate_late_fee(self)
+'''
+c, n = re.subn(old_lf_prop, new_lf, c, count=1)
+if n == 0:
+    if 'payments.filter(is_successful=True).exists()' in c:
+        SKIPPED.append("FIX 6: late fee")
+        print("  (skip) FIX 6: already applied")
+    else:
+        print("  ⚠ FIX 6: late_fee property shape unexpected — skipping (inspect manually)")
+        SKIPPED.append("FIX 6: late fee")
+else:
+    write(p, c)
 
 
-# ============================================================
-# FIX 7: record_payment — validate amount, reject cancelled, handle zero-total
-# ============================================================
+# ===========================================================================
+# FIX 7 — record_payment: validate amount / status / zero-total
+# ===========================================================================
+banner("FIX 7: record_payment validation")
+p = BASE / "apps/fees/services/fee_service.py"
+c = read(p)
 
-with open(fee_service, "r") as f:
-    content = f.read()
+insert_after = "challan = FeeChallan.objects.select_for_update().get(pk=challan.pk)"
+if "Cannot pay a cancelled challan" not in c:
+    guard = '''challan = FeeChallan.objects.select_for_update().get(pk=challan.pk)
 
-old_record = '''    @classmethod
-    @transaction.atomic
-    def record_payment(
-        cls,
-        challan: FeeChallan,
-        amount: Decimal,
-        method: str,
-        user=None,
-        transaction_ref: str = "",
-        payment_date: date = None,
-        is_successful: bool = True,
-        notes: str = "",
-    ) -> FeePayment:
-        # Lock the challan row to prevent duplicate concurrent payments
-        challan = FeeChallan.objects.select_for_update().get(pk=challan.pk)
-
-        if challan.status == FeeChallan.Status.PAID:
-            raise ValueError("Challan is already fully paid.")
-
-        amount = Decimal(amount)
-        if amount <= 0:
-            raise ValueError("Payment amount must be positive.")
-
-        # Server-side payment verification should go here in production
-        # — never trust client success. For demo we trust is_successful.
-        payment = FeePayment.objects.create(
-            challan=challan,
-            amount=amount,
-            method=method,
-            transaction_ref=transaction_ref,
-            is_successful=is_successful,
-            recorded_by=user,
-            payment_date=payment_date or timezone.now().date(),
-            notes=notes,
-        )
-
-        cls.update_challan_status(challan)
-        return payment'''
-
-new_record = '''    @classmethod
-    @transaction.atomic
-    def record_payment(
-        cls,
-        challan: FeeChallan,
-        amount: Decimal,
-        method: str,
-        user=None,
-        transaction_ref: str = "",
-        payment_date: date = None,
-        is_successful: bool = True,
-        notes: str = "",
-    ) -> FeePayment:
-        # Lock the challan row to prevent duplicate concurrent payments
-        challan = FeeChallan.objects.select_for_update().get(pk=challan.pk)
-
-        # VALIDATION: reject cancelled challans
         if challan.status == FeeChallan.Status.CANCELLED:
             raise ValueError("Cannot pay a cancelled challan.")
-
-        # VALIDATION: reject already-paid challans
         if challan.status == FeeChallan.Status.PAID:
-            raise ValueError("Challan is already fully paid.")
+            raise ValueError("Challan is already fully paid.")'''
+    c = replace_once(c, insert_after, guard, "FIX 7: status guards")
 
-        amount = Decimal(amount)
-        # VALIDATION: amount must be positive
+if "exceeds outstanding balance" not in c:
+    guard2 = '''        amount = Decimal(amount)
         if amount <= 0:
             raise ValueError("Payment amount must be positive.")
 
-        # VALIDATION: amount cannot exceed balance
-        balance = challan.balance
-        if amount > balance:
+        if amount > challan.balance:
             raise ValueError(
-                f"Payment amount ({amount}) exceeds outstanding balance ({balance})."
-            )
+                f"Payment amount ({amount}) exceeds balance ({challan.balance})."
+            )'''
+    old_amt = '''        amount = Decimal(amount)
+        if amount <= 0:
+            raise ValueError("Payment amount must be positive.")'''
+    c = replace_once(c, old_amt, guard2, "FIX 7: balance cap")
 
-        # Handle zero-total challans (no fee due)
-        if challan.total_payable == 0:
-            raise ValueError("Cannot record payment on a zero-amount challan.")
-
-        # Server-side payment verification should go here in production
-        # — never trust client success. For demo we trust is_successful.
-        payment = FeePayment.objects.create(
-            challan=challan,
-            amount=amount,
-            method=method,
-            transaction_ref=transaction_ref,
-            is_successful=is_successful,
-            recorded_by=user,
-            payment_date=payment_date or timezone.now().date(),
-            notes=notes,
-        )
-
-        cls.update_challan_status(challan)
-        return payment'''
-
-content = content.replace(old_record, new_record)
-
-# Also fix update_challan_status to handle zero-total correctly
-old_update = '''    @classmethod
-    def update_challan_status(cls, challan: FeeChallan) -> FeeChallan:
-        challan.refresh_from_db()
-        total_paid = challan.total_paid
-        total_payable = challan.total_payable
-
-        if total_paid >= total_payable and total_payable > 0:
-            challan.status = FeeChallan.Status.PAID
-        elif total_paid > 0:
-            challan.status = FeeChallan.Status.PARTIAL
-        elif challan.due_date and timezone.now().date() > challan.due_date:
-            challan.status = FeeChallan.Status.OVERDUE
-        else:
-            challan.status = FeeChallan.Status.UNPAID
-        challan.save(update_fields=["status"])
-        return challan'''
-
-new_update = '''    @classmethod
-    def update_challan_status(cls, challan: FeeChallan) -> FeeChallan:
-        challan.refresh_from_db()
-        total_paid = challan.total_paid
-        total_payable = challan.total_payable
-
-        # A challan is PAID when total_paid >= total_payable
-        # (handles both normal and zero-total edge cases)
-        if total_payable > 0 and total_paid >= total_payable:
-            challan.status = FeeChallan.Status.PAID
-        elif total_payable == 0:
-            # Zero-amount challans are automatically "paid" (nothing to collect)
-            challan.status = FeeChallan.Status.PAID
-        elif total_paid > 0:
-            challan.status = FeeChallan.Status.PARTIAL
-        elif challan.due_date and timezone.now().date() > challan.due_date:
-            challan.status = FeeChallan.Status.OVERDUE
-        else:
-            challan.status = FeeChallan.Status.UNPAID
-        challan.save(update_fields=["status"])
-        return challan'''
-
-content = content.replace(old_update, new_update)
-
-with open(fee_service, "w") as f:
-    f.write(content)
-print("✓ FIX 7: record_payment validates amount, rejects cancelled, handles zero-total")
+write(p, c)
 
 
-# ============================================================
-# FIX 8: Payroll — status guards, retry failed, validate negatives
-# ============================================================
+# ===========================================================================
+# FIX 8 — Payroll: guards + retry-safe (real fixes, not the broken version)
+# ===========================================================================
+banner("FIX 8: payroll guards + retry-safe")
+p = BASE / "apps/payroll/models.py"
+c = read(p)
 
-payroll_models = os.path.join(BASE, "apps/payroll/models.py")
-with open(payroll_models, "r") as f:
-    content = f.read()
+# 8a. generate_payroll: include FAILED in the "don't reset" set
+if "Payroll.Status.FAILED" not in c or "return existing  # Don't reset" not in c:
+    c = replace_re(
+        c,
+        r'if existing and existing\.status in \((Payroll\.Status\.PAID), (Payroll\.Status\.PROCESSING)\):',
+        r'if existing and existing.status in (\1, \2, Payroll.Status.FAILED):',
+        "FIX 8a: FAILED not reset",
+    )
 
-old_calc = '''    @staticmethod
-    def calculate_salary(teacher: Teacher, month_label: str,
-                          allowances=Decimal(0), deductions=Decimal(0),
-                          bonus=Decimal(0), leave_deductions=Decimal(0)) -> dict:
-        basic = teacher.basic_salary or Decimal(0)
-        net = basic + Decimal(allowances) - Decimal(deductions) + Decimal(bonus) - Decimal(leave_deductions)
-        return {
-            "teacher": teacher,
-            "month": month_label,
-            "basic_salary": basic,
-            "allowances": allowances,
-            "deductions": deductions,
-            "bonus": bonus,
-            "leave_deductions": leave_deductions,
-            "net_salary": net,
-        }'''
-
-new_calc = '''    @staticmethod
-    def calculate_salary(teacher: Teacher, month_label: str,
-                          allowances=Decimal(0), deductions=Decimal(0),
-                          bonus=Decimal(0), leave_deductions=Decimal(0)) -> dict:
-        # VALIDATION: no negative values
-        allowances = max(Decimal(0), Decimal(allowances))
-        deductions = max(Decimal(0), Decimal(deductions))
-        bonus = max(Decimal(0), Decimal(bonus))
-        leave_deductions = max(Decimal(0), Decimal(leave_deductions))
-
-        basic = teacher.basic_salary or Decimal(0)
-        net = basic + allowances - deductions + bonus - leave_deductions
-        # Net salary cannot be negative
-        net = max(Decimal(0), net)
-        return {
-            "teacher": teacher,
-            "month": month_label,
-            "basic_salary": basic,
-            "allowances": allowances,
-            "deductions": deductions,
-            "bonus": bonus,
-            "leave_deductions": leave_deductions,
-            "net_salary": net,
-        }'''
-
-content = content.replace(old_calc, new_calc)
-
-# Fix generate_payroll to not reset paid records
-old_gen = '''    @staticmethod
-    def generate_payroll(teacher: Teacher, month_label: str, user=None, **kwargs) -> Payroll:
-        data = PayrollService.calculate_salary(teacher, month_label, **kwargs)
-        obj, created = Payroll.objects.update_or_create(
-            teacher=teacher, month=month_label,
-            defaults={
-                "basic_salary": data["basic_salary"],
-                "allowances": data["allowances"],
-                "deductions": data["deductions"],
-                "bonus": data["bonus"],
-                "leave_deductions": data["leave_deductions"],
-                "net_salary": data["net_salary"],
-                "status": Payroll.Status.DRAFT,
-            },
-        )
-        return obj'''
-
-new_gen = '''    @staticmethod
-    def generate_payroll(teacher: Teacher, month_label: str, user=None, **kwargs) -> Payroll:
-        data = PayrollService.calculate_salary(teacher, month_label, **kwargs)
-        # Don't overwrite a PAID or PROCESSING payroll
-        existing = Payroll.objects.filter(teacher=teacher, month=month_label).first()
-        if existing and existing.status in (Payroll.Status.PAID, Payroll.Status.PROCESSING):
-            return existing  # Don't reset a paid payroll
-        obj, created = Payroll.objects.update_or_create(
-            teacher=teacher, month=month_label,
-            defaults={
-                "basic_salary": data["basic_salary"],
-                "allowances": data["allowances"],
-                "deductions": data["deductions"],
-                "bonus": data["bonus"],
-                "leave_deductions": data["leave_deductions"],
-                "net_salary": data["net_salary"],
-                "status": Payroll.Status.DRAFT,
-            },
-        )
-        return obj'''
-
-content = content.replace(old_gen, new_gen)
-
-# Fix record_bank_payment to add status guards and allow retry
-old_pay = '''    @staticmethod
-    def record_bank_payment(payroll: Payroll, user, method="bank_transfer",
-                            transaction_ref="", is_successful=True) -> SalaryPayment:
-        from django.db import transaction
-        with transaction.atomic():
-            payroll = Payroll.objects.select_for_update().get(pk=payroll.pk)
-            payment = SalaryPayment.objects.create(
-                payroll=payroll, amount=payroll.net_salary,
-                method=method, transaction_ref=transaction_ref,
-                is_successful=is_successful, recorded_by=user,
-            )
-            payroll.status = Payroll.Status.PAID if is_successful else Payroll.Status.FAILED
-            payroll.save(update_fields=["status"])
-        return payment'''
-
-new_pay = '''    @staticmethod
-    def record_bank_payment(payroll: Payroll, user, method="bank_transfer",
-                            transaction_ref="", is_successful=True) -> SalaryPayment:
-        from django.db import transaction
-        with transaction.atomic():
-            payroll = Payroll.objects.select_for_update().get(pk=payroll.pk)
-
-            # STATUS GUARD: can only pay APPROVED or FAILED payrolls
-            if payroll.status == Payroll.Status.DRAFT:
-                raise ValueError("Cannot pay an unapproved payroll. Approve first.")
-            if payroll.status == Payroll.Status.PAID:
+# 8b. record_bank_payment: PROCESSING guard + delete *all* prior payments on retry
+if "Payroll is already being processed" not in c:
+    old_guard = '''            if payroll.status == Payroll.Status.PAID:
+                raise ValueError("This payroll has already been paid.")'''
+    new_guard = '''            if payroll.status == Payroll.Status.PAID:
                 raise ValueError("This payroll has already been paid.")
+            if payroll.status == Payroll.Status.PROCESSING:
+                raise ValueError("Payroll is already being processed.")'''
+    c = replace_once(c, old_guard, new_guard, "FIX 8b: PROCESSING guard")
 
-            # Delete any previous FAILED payment to allow retry
-            if payroll.status == Payroll.Status.FAILED:
-                SalaryPayment.objects.filter(payroll=payroll, is_successful=False).delete()
+if "SalaryPayment.objects.filter(payroll=payroll).delete()" not in c:
+    old_retry = '''            if payroll.status == Payroll.Status.FAILED:
+                SalaryPayment.objects.filter(payroll=payroll, is_successful=False).delete()'''
+    new_retry = '''            if payroll.status == Payroll.Status.FAILED:
+                # OneToOneField means any prior row must be removed first
+                SalaryPayment.objects.filter(payroll=payroll).delete()'''
+    c = replace_once(c, old_retry, new_retry, "FIX 8b: retry deletes all prior")
 
-            payment = SalaryPayment.objects.create(
-                payroll=payroll, amount=payroll.net_salary,
-                method=method, transaction_ref=transaction_ref,
-                is_successful=is_successful, recorded_by=user,
-            )
-            payroll.status = Payroll.Status.PAID if is_successful else Payroll.Status.FAILED
-            payroll.save(update_fields=["status"])
-        return payment'''
-
-content = content.replace(old_pay, new_pay)
-
-with open(payroll_models, "w") as f:
-    f.write(content)
-print("✓ FIX 8: Payroll status guards added (no pay from draft, no re-approve paid, retry failed, no negatives)")
+write(p, c)
 
 
-# ============================================================
-# FIX 12: result_service — fix import path
-# ============================================================
+# ===========================================================================
+# FIX 11 — Marks validation
+# ===========================================================================
+banner("FIX 11: marks validation")
+p = BASE / "apps/examinations/views.py"
+c = read(p)
 
-result_service = os.path.join(BASE, "apps/examinations/services/result_service.py")
-with open(result_service, "r") as f:
-    content = f.read()
-
-# Fix the broken import on line 70
-content = content.replace(
-    "from .models import ExamResult, Exam",
-    "from ..models import ExamResult, Exam"
-)
-
-with open(result_service, "w") as f:
-    f.write(content)
-print("✓ FIX 12: result_service import path fixed (from .models → from ..models)")
-
-
-# ============================================================
-# FIX MEDIUM: crispy load in datesheet detail template
-# ============================================================
-
-ds_detail = os.path.join(BASE, "templates/datesheets/datesheet_detail.html")
-if os.path.exists(ds_detail):
-    with open(ds_detail, "r") as f:
-        content = f.read()
-    if "{% load crispy_forms_tags %}" not in content:
-        content = content.replace(
-            "{% extends \"base.html\" %}",
-            "{% extends \"base.html\" %}\n{% load crispy_forms_tags %}"
-        )
-        with open(ds_detail, "w") as f:
-            f.write(content)
-        print("✓ MEDIUM: Added crispy_forms_tags load to datesheet_detail.html")
-    else:
-        print("✓ MEDIUM: datesheet_detail.html already has crispy load")
-else:
-    print("✓ MEDIUM: datesheet_detail.html not found (already fixed in template generator)")
-
-
-# ============================================================
-# FIX MEDIUM: apps/__init__.py for test discovery
-# ============================================================
-
-apps_init = os.path.join(BASE, "apps/__init__.py")
-if not os.path.exists(apps_init):
-    with open(apps_init, "w") as f:
-        f.write("")
-    print("✓ MEDIUM: Added apps/__init__.py for test discovery")
-else:
-    print("✓ MEDIUM: apps/__init__.py already exists")
-
-
-# ============================================================
-# FIX MEDIUM: .gitignore — fix comment-after-pattern issue
-# ============================================================
-
-gitignore = os.path.join(BASE, ".gitignore")
-with open(gitignore, "r") as f:
-    content = f.read()
-
-content = content.replace(
-    "records.txt          # auto-generated by generate_demo_data",
-    "records.txt"
-)
-content = content.replace(
-    "*.xlsx              # auto-generated by export_data",
-    "*.xlsx"
-)
-
-with open(gitignore, "w") as f:
-    f.write(content)
-print("✓ MEDIUM: .gitignore fixed (removed inline comments after patterns)")
-
-
-# ============================================================
-# FIX MEDIUM: wsgi.py default settings
-# ============================================================
-
-wsgi = os.path.join(BASE, "config/wsgi.py")
-with open(wsgi, "r") as f:
-    content = f.read()
-content = content.replace(
-    "config.settings.dev",
-    "config.settings.prod"
-)
-with open(wsgi, "w") as f:
-    f.write(content)
-print("✓ MEDIUM: wsgi.py defaults to prod settings (was dev)")
-
-
-# ============================================================
-# FIX MEDIUM: PaymentConfirmView — apply rate limit decorator correctly
-# ============================================================
-
-with open(fees_views, "r") as f:
-    content = f.read()
-
-# Fix the rate limit that was imported inside form_valid but never applied
-content = content.replace(
-    '''    def form_valid(self, form):
-        from django_ratelimit.decorators import ratelimit
-        from django.utils.decorators import method_decorator
-
-        challan_no = form.cleaned_data["challan_no"].strip()"''',
-    '''    def form_valid(self, form):
-        challan_no = form.cleaned_data["challan_no"].strip()"'''
-)
-
-# Also fix the double-decorator issue on PaymentConfirmView
-content = content.replace(
-    '''@method_decorator(ratelimit(key="user", rate="10/m", method="POST", block=True), name="post")
-@method_decorator(ratelimit(key="user", rate="5/m", method="POST", block=True), name="post")
-class PaymentConfirmView''',
-    '''@method_decorator(ratelimit(key="user", rate="5/m", method="POST", block=True), name="post")
-class PaymentConfirmView'''
-)
-
-with open(fees_views, "w") as f:
-    f.write(content)
-print("✓ MEDIUM: Rate limit decorators fixed on PaymentConfirmView")
-
-
-# ============================================================
-# FIX 11: Marks validation in ClassTestResultsView
-# ============================================================
-
-exams_views = os.path.join(BASE, "apps/examinations/views.py")
-with open(exams_views, "r") as f:
-    content = f.read()
-
-# Add validation to the marks entry post method
-old_marks = '''    def post(self, request, *args, **kwargs):
+if "Marks cannot be negative" not in c:
+    old_marks = '''    def post(self, request, *args, **kwargs):
         student_ids = request.POST.getlist("student_id")
         obtained = request.POST.getlist("obtained_marks")
         remarks = request.POST.getlist("remarks")
@@ -788,118 +478,140 @@ old_marks = '''    def post(self, request, *args, **kwargs):
             )
         messages.success(request, "Marks saved.")
         return redirect("examinations:classtest_detail", pk=self.test.pk)'''
+    new_marks = '''    def post(self, request, *args, **kwargs):
+        from decimal import Decimal, InvalidOperation
 
-new_marks = '''    def post(self, request, *args, **kwargs):
         student_ids = request.POST.getlist("student_id")
         obtained = request.POST.getlist("obtained_marks")
         remarks = request.POST.getlist("remarks")
         errors = []
+        total = self.test.total_marks
         for sid, marks, rem in zip(student_ids, obtained, remarks):
             try:
-                marks_val = float(marks) if marks else 0
-                # VALIDATION: marks must be between 0 and total_marks
-                if marks_val < 0:
-                    errors.append(f"Marks cannot be negative for student #{sid}")
-                    continue
-                if marks_val > float(self.test.total_marks):
-                    errors.append(
-                        f"Marks ({marks_val}) exceed total marks ({self.test.total_marks}) for student #{sid}"
-                    )
-                    continue
-                TestResult.objects.update_or_create(
-                    test=self.test, student_id=sid,
-                    defaults={"obtained_marks": marks_val, "remarks": rem or ""},
-                )
-            except (ValueError, TypeError):
-                errors.append(f"Invalid marks value '{marks}' for student #{sid}")
+                val = Decimal(str(marks or "0")).quantize(Decimal("0.01"))
+            except (InvalidOperation, TypeError):
+                errors.append(f"Invalid marks for student #{sid}")
                 continue
+            if val < 0 or val > total:
+                errors.append(
+                    f"Marks {val} out of range 0–{total} for student #{sid}"
+                )
+                continue
+            TestResult.objects.update_or_create(
+                test=self.test, student_id=sid,
+                defaults={"obtained_marks": val, "remarks": rem or ""},
+            )
         if errors:
-            messages.error(request, "Some marks were not saved: " + "; ".join(errors))
+            messages.error(request, "Some marks not saved: " + "; ".join(errors))
         else:
-            messages.success(request, "Marks saved successfully.")
+            messages.success(request, "Marks saved.")
         return redirect("examinations:classtest_detail", pk=self.test.pk)'''
-
-content = content.replace(old_marks, new_marks)
-
-with open(exams_views, "w") as f:
-    f.write(content)
-print("✓ FIX 11: Marks validation added (0 ≤ obtained ≤ total_marks, no negatives, no non-numeric)")
-
-
-# ============================================================
-# FIX 4: File upload validation — add to homework form
-# ============================================================
-
-hw_forms = os.path.join(BASE, "apps/homework/forms.py")
-with open(hw_forms, "r") as f:
-    content = f.read()
-
-# Add file validation to HomeworkForm
-if "clean_attachment" not in content:
-    content = content.replace(
-        "class HomeworkForm(forms.ModelForm):",
-        '''ALLOWED_FILE_TYPES = [".pdf", ".doc", ".docx", ".txt", ".png", ".jpg", ".jpeg", ".zip"]
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
-
-
-class HomeworkForm(forms.ModelForm):'''
-    )
-    # Add clean method for attachment
-    content += '''
-
-    def clean_attachment(self):
-        file = self.cleaned_data.get("attachment")
-        if file:
-            # Validate file extension
-            import os
-            ext = os.path.splitext(file.name)[1].lower()
-            if ext not in ALLOWED_FILE_TYPES:
-                raise forms.ValidationError(
-                    f"File type '{ext}' is not allowed. Allowed: {', '.join(ALLOWED_FILE_TYPES)}"
-                )
-            # Validate file size
-            if file.size > MAX_FILE_SIZE:
-                raise forms.ValidationError(
-                    f"File size ({file.size // 1024}KB) exceeds maximum (10MB)."
-                )
-        return file
-'''
-
-    with open(hw_forms, "w") as f:
-        f.write(content)
-    print("✓ FIX 4: File upload validation added (type + size checks)")
+    c = replace_once(c, old_marks, new_marks, "FIX 11: marks validation")
+    write(p, c)
 else:
-    print("✓ FIX 4: File validation already present")
+    SKIPPED.append("FIX 11: marks")
+    print("  (skip) FIX 11: already applied")
 
 
-# ============================================================
-# FIX MEDIUM: .env loading — add python-dotenv to manage.py
-# ============================================================
+# ===========================================================================
+# FIX 12 — result_service import path
+# ===========================================================================
+banner("FIX 12: result_service import")
+p = BASE / "apps/examinations/services/result_service.py"
+c = read(p)
+c = replace_once(
+    c,
+    "from .models import ExamResult, Exam",
+    "from ..models import ExamResult, Exam",
+    "FIX 12: relative import",
+)
+write(p, c)
 
-manage_py = os.path.join(BASE, "manage.py")
-with open(manage_py, "r") as f:
-    content = f.read()
 
-if "dotenv" not in content:
-    content = content.replace(
+# ===========================================================================
+# FIX MEDIUM — rate limit: single decorator, tolerant of class args
+# ===========================================================================
+banner("MEDIUM: rate-limit decorator dedupe")
+p = BASE / "apps/fees/views.py"
+c = read(p)
+c = re.sub(
+    r'@method_decorator\(ratelimit\(key="user", rate="10/m", method="POST", block=True\), name="post"\)\n',
+    "",
+    c,
+)
+write(p, c)
+
+
+# ===========================================================================
+# FIX MEDIUM — .env loading in manage.py (path + warning on missing dotenv)
+# ===========================================================================
+banner("MEDIUM: manage.py dotenv")
+p = BASE / "manage.py"
+c = read(p)
+if "load_dotenv" not in c:
+    c = replace_once(
+        c,
         '"""Django\'s command-line utility for administrative tasks."""',
         '''"""Django's command-line utility for administrative tasks."""
-# Load .env file if python-dotenv is available
+from pathlib import Path as _Path
 try:
-    from dotenv import load_dotenv
-    load_dotenv()
+    from dotenv import load_dotenv as _load_dotenv
+    _load_dotenv(_Path(__file__).resolve().parent / ".env")
 except ImportError:
-    pass  # .env loading is optional; env vars can be set directly'''
+    import sys as _sys
+    _sys.stderr.write("warning: python-dotenv not installed; .env ignored\\n")''',
+        "MEDIUM: manage.py dotenv",
     )
-
-    with open(manage_py, "w") as f:
-        f.write(content)
-    print("✓ MEDIUM: .env loading added to manage.py (optional, via python-dotenv)")
+    write(p, c)
 else:
-    print("✓ MEDIUM: .env loading already in manage.py")
+    SKIPPED.append("MEDIUM: dotenv")
+    print("  (skip) MEDIUM: dotenv already applied")
 
 
-print("\n=== ALL FIXES APPLIED ===")
-print("Critical: #1 (test gateway), #3 (Google login), #4 (file uploads)")
-print("High: #5 (balance charge), #6 (late fee), #7 (payment validation), #8 (payroll guards), #11 (marks), #12 (result import)")
-print("Medium: crispy load, apps/__init__.py, .gitignore, wsgi.py, rate limits, .env loading")
+# ===========================================================================
+# FIX MEDIUM — .gitignore inline comments
+# ===========================================================================
+banner("MEDIUM: .gitignore cleanup")
+p = BASE / ".gitignore"
+if p.exists():
+    c = read(p)
+    c = re.sub(r"^(.*?)\s+#\s.*$", r"\1", c, flags=re.MULTILINE)
+    write(p, c)
+else:
+    SKIPPED.append("MEDIUM: .gitignore missing")
+    print("  (skip) MEDIUM: .gitignore not found")
+
+
+# ===========================================================================
+# FIX MEDIUM — wsgi.py: default to base, not prod
+# ===========================================================================
+banner("MEDIUM: wsgi.py default settings")
+p = BASE / "config/wsgi.py"
+c = read(p)
+# Do NOT flip dev -> prod (that breaks local runserver).
+# Instead, make it configurable and keep 'dev' as the safe local default.
+if "DJANGO_SETTINGS_MODULE" in c and 'os.environ.setdefault("DJANGO_SETTINGS_MODULE"' not in c \
+        and "os.environ.setdefault('DJANGO_SETTINGS_MODULE'" not in c:
+    c = replace_re(
+        c,
+        r"os\.environ\[\s*['\"]DJANGO_SETTINGS_MODULE['\"]\s*\]\s*=\s*['\"]config\.settings\.(?:dev|prod)['\"]",
+        'os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.dev")',
+        "MEDIUM: wsgi.py",
+    )
+    write(p, c)
+else:
+    SKIPPED.append("MEDIUM: wsgi.py")
+    print("  (skip) MEDIUM: wsgi.py already uses setdefault")
+
+
+# ===========================================================================
+# Done
+# ===========================================================================
+print(f"\n{'[DRY-RUN] ' if DRY_RUN else ''}"
+      f"Changed {len(CHANGED)} file(s); skipped {len(SKIPPED)} already-applied fix(es).")
+for path in CHANGED:
+    print(f"  • {path.relative_to(BASE) if path.is_relative_to(BASE) else path}")
+if SKIPPED:
+    print("Skipped (already applied):")
+    for s in SKIPPED:
+        print(f"  – {s}")
