@@ -184,17 +184,18 @@ RATELIMIT_VIEW = "apps.accounts.views.rate_limit_exceeded"
 
 # ---------------------------------------------------------------------------
 # Content Security Policy (CSP)
+# Base settings use strict CSP (NO 'unsafe-inline'). Dev settings override
+# to add 'unsafe-inline' for Chart.js + inline scripts during development.
+# Production inherits these strict settings — NO 'unsafe-inline' in prod.
 # ---------------------------------------------------------------------------
 CSP_DEFAULT_SRC = ("'self'",)
 CSP_SCRIPT_SRC = (
     "'self'",
-    "'unsafe-inline'",  # required for inline Chart.js init + CSRF ajax
     "https://cdn.jsdelivr.net",
     "https://code.jquery.com",
 )
 CSP_STYLE_SRC = (
     "'self'",
-    "'unsafe-inline'",
     "https://cdn.jsdelivr.net",
     "https://fonts.googleapis.com",
 )
@@ -248,7 +249,7 @@ EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
 EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
 EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "True").lower() == "true"
-DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@apslahore.edu.pk")
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@yourschool.edu")
 
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
@@ -282,14 +283,14 @@ CRISPY_TEMPLATE_PACK = "bootstrap5"
 # ---------------------------------------------------------------------------
 # School config
 # ---------------------------------------------------------------------------
-SCHOOL_NAME = os.environ.get("SCHOOL_NAME", "Army Public School Lahore")
-SCHOOL_TAGLINE = os.environ.get("SCHOOL_TAGLINE", "I shall rise and shine")
+SCHOOL_NAME = os.environ.get("SCHOOL_NAME", "Your School Name")
+SCHOOL_TAGLINE = os.environ.get("SCHOOL_TAGLINE", "Excellence in Education")
 SCHOOL_ADDRESS = os.environ.get(
     "SCHOOL_ADDRESS",
-    "Army Public School Lahore, Tufail Road, Lahore Cantt, Lahore, Pakistan",
+    "Your School Name, 123 Education Street, Your City, Your Country",
 )
-SCHOOL_PHONE = os.environ.get("SCHOOL_PHONE", "+92 42 9920 2040")
-SCHOOL_EMAIL = os.environ.get("SCHOOL_EMAIL", "info@apslahore.edu.pk")
+SCHOOL_PHONE = os.environ.get("SCHOOL_PHONE", "+1 (555) 123-4567")
+SCHOOL_EMAIL = os.environ.get("SCHOOL_EMAIL", "info@yourschool.edu")
 SCHOOL_CURRENCY = "PKR"
 SCHOOL_CURRENCY_SYMBOL = "Rs."
 SCHOOL_LATE_FEE_DAYS = 7
