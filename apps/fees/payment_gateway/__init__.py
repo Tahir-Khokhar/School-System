@@ -183,10 +183,23 @@ class StripeGateway(PaymentGateway):
         challan_no = session.get("metadata", {}).get("challan_no")
         if not challan_no:
             return False, {}
+        # Extract the amount actually charged (in paisa) from the session.
+        # We convert back to Decimal PKR so the webhook records the exact
+        # amount the parent paid — NOT the current challan.balance (which
+        # may have changed between checkout and webhook due to admin edits).
+        charged_minor = session.get("amount_total") or (
+            session.get("line_items", {}).get("data", [{}])[0].get("amount", 0)
+            if session.get("line_items") else 0
+        )
+        try:
+            charged_amount = Decimal(charged_minor) / Decimal(100)
+        except (TypeError, ValueError):
+            charged_amount = None
         return True, {
             "challan_no": challan_no,
             "transaction_ref": session.id,
             "method": "card",
+            "amount": str(charged_amount) if charged_amount else None,
         }
 
 
@@ -206,10 +219,23 @@ class JazzCashGateway(PaymentGateway):
             raise PaymentGatewayError("JazzCash credentials not configured")
 
     def _secure_hash(self, sorted_fields: list) -> str:
-        """JazzCash uses an MD5 HMAC over '&' -joined sorted field values, prefixed
-        with the integrity salt. This is the official spec from JazzCash docs."""
-        data = self.salt + "&" + "&".join(str(v) for v in sorted_fields)
-        return hashlib.md5(data.encode("utf-8")).hexdigest().upper()
+        """JazzCash CPG uses HMAC-SHA256 over '&'-joined sorted field values,
+        prefixed with the integrity salt.
+
+        NOTE: older JazzCash docs referenced MD5. The current CPG 2.0 spec
+        requires SHA-256. We use HMAC-SHA256 with the integrity salt as
+        the key for constant-time comparison on verification.
+
+        If your merchant account still uses the legacy MD5 spec, override
+        this method in a subclass. But MD5 is cryptographically broken —
+        an attacker who knows the salt can forge a valid hash in seconds.
+        """
+        data = "&".join(str(v) for v in sorted_fields)
+        return hmac.new(
+            self.salt.encode("utf-8"),
+            data.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest().upper()
 
     def create_checkout(self, challan: FeeChallan, request) -> dict:
         # JazzCash expects a form POST from the browser, so we return the API URL
@@ -260,13 +286,22 @@ class JazzCashGateway(PaymentGateway):
         expected_hash = self._secure_hash(sorted_values)
         if not hmac.compare_digest(received_hash, expected_hash):
             return False, {}
-        # Check payment status
-        if post.get("pp_ResponseCode") not in ("000", "121"):  # 000 = success, 121 = success-pending
+        # Check payment status — ONLY accept "000" (completed). Response
+        # code "121" means "pending" (bank settlement in progress). A pending
+        # payment must NOT be recorded as PAID — the parent hasn't been
+        # charged yet, and the money hasn't settled. Accepting "121" would
+        # mark the challan as paid before the funds arrive.
+        if post.get("pp_ResponseCode") != "000":
             return False, {}
         return True, {
             "challan_no": challan_no,
             "transaction_ref": post.get("pp_TxnRefNo", ""),
             "method": "online",
+            # Return the amount JazzCash says was charged (in paisa) so the
+            # webhook records the EXACT amount the parent paid — not the
+            # current challan.balance which may have changed.
+            "amount": str(Decimal(post.get("pp_Amount", "0")) / Decimal(100))
+            if post.get("pp_Amount") else None,
         }
 
 
