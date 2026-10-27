@@ -1,36 +1,67 @@
-"""Production settings — read everything from environment."""
-import os
+"""Production settings — everything comes from environment.
+
+Required env vars (missing ones cause ImproperlyConfigured at import):
+    DJANGO_SECRET_KEY        — long random string, never committed
+    ALLOWED_HOSTS            — comma-separated hostnames (e.g. "school.example.pk,www.school.example.pk")
+    CSRF_TRUSTED_ORIGINS     — comma-separated origins (e.g. "https://school.example.pk")
+
+Optional:
+    SECURE_SSL_REDIRECT      — default: true
+    SECURE_HSTS_SECONDS      — default: 31536000 (1 year)
+    SECURE_HSTS_PRELOAD      — default: false (set true only after submitting to preload list)
+"""
 from django.core.exceptions import ImproperlyConfigured
-from .base import *  # noqa
+from .base import *  # noqa  — also brings in env_bool / env_int / env_list
 
 
-def env_bool(name, default=False):
-    return os.environ.get(name, str(default)).lower() in ("1", "true", "yes", "on")
+# ---------------------------------------------------------------------------
+# Guards
+# ---------------------------------------------------------------------------
+DEBUG = False
+if env_bool("DJANGO_DEBUG", False):
+    raise ImproperlyConfigured(
+        "DJANGO_DEBUG must not be set in production settings."
+    )
 
-
-def env_list(name, default=""):
-    return [x.strip() for x in os.environ.get(name, default).split(",") if x.strip()]
-
-
-DEBUG = env_bool("DJANGO_DEBUG", False)
-if DEBUG and os.environ.get("ENV") == "production":
-    raise ImproperlyConfigured("DEBUG must be False in production")
-
-ALLOWED_HOSTS = env_list("ALLOWED_HOSTS")
 if not ALLOWED_HOSTS:
-    raise ImproperlyConfigured("ALLOWED_HOSTS must be set in production")
+    raise ImproperlyConfigured(
+        "ALLOWED_HOSTS must be set in production (comma-separated hostnames)."
+    )
 
-SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", True)
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")  # only if proxy sets it
+CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS")
+if not CSRF_TRUSTED_ORIGINS:
+    raise ImproperlyConfigured(
+        "CSRF_TRUSTED_ORIGINS must be set in production "
+        "(comma-separated, e.g. 'https://school.example.pk')."
+    )
 
+
+# ---------------------------------------------------------------------------
+# Cookies
+# ---------------------------------------------------------------------------
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
-CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS")
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = False  # JS must read this cookie for AJAX CSRF header
 
-SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", 31536000))  # 1 year
+
+# ---------------------------------------------------------------------------
+# HTTPS / HSTS
+# ---------------------------------------------------------------------------
+SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", True)
+
+# Only correct if your reverse proxy sets X-Forwarded-Proto faithfully.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+SECURE_HSTS_SECONDS = env_int("SECURE_HSTS_SECONDS", 31536000)  # 1 year
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-SECURE_HSTS_PRELOAD = False  # enable only when actually submitted to preload list
+SECURE_HSTS_PRELOAD = env_bool("SECURE_HSTS_PRELOAD", False)
 
+
+# ---------------------------------------------------------------------------
+# Misc hardening
+# ---------------------------------------------------------------------------
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = "same-origin"
 X_FRAME_OPTIONS = "DENY"
+# SECURE_BROWSER_XSS_FILTER: removed in Django 4.0 — do not set it.
