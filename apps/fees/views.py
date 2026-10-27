@@ -95,11 +95,29 @@ class FeeChallanListView(StaffRequiredMixin, PermissionRequiredMixin, ListView):
         return ctx
 
 
-class FeeChallanDetailView(StaffRequiredMixin, PermissionRequiredMixin, DetailView):
+class FeeChallanDetailView(LoginRequiredMixin, DetailView):
+    """Challan detail — staff see any challan; students/parents see ONLY
+    their own challans (ownership verified server-side via _check_challan_ownership).
+    This prevents the 403 error when a student is redirected here after
+    making a payment.
+    """
     model = FeeChallan
     template_name = "fees/challan_detail.html"
     context_object_name = "challan"
-    permission_required = "fees.view_feechallan"
+
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return self.handle_no_permission()
+        # Staff with view_feechallan perm → see any challan.
+        if request.user.is_staff or request.user.has_perm("fees.view_feechallan"):
+            return super().dispatch(request, *args, **kwargs)
+        # Student/parent → ownership check.
+        obj = self.get_object()
+        allowed, reason = _check_challan_ownership(request, obj)
+        if not allowed:
+            from django.core.exceptions import PermissionDenied
+            raise PermissionDenied(reason)
+        return super().dispatch(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -520,7 +538,7 @@ def stripe_webhook(request):
         if challan.status != FeeChallan.Status.PAID:
             FeeService.record_payment(
                 challan=challan,
-                amount=challan.balance,
+                amount=Decimal(meta.get("amount") or str(challan.balance)),
                 method=meta.get("method", "online"),
                 user=None,
                 transaction_ref=meta.get("transaction_ref", ""),
@@ -547,10 +565,16 @@ def stripe_webhook(request):
     return HttpResponse("OK")
 
 
+@method_decorator(csrf_exempt, name="dispatch")
 @method_decorator(ratelimit(key="ip", rate="10/m", method="POST", block=True), name="post")
 class JazzCashReturnView(View):
     """JazzCash redirects the browser back here with a signed POST.
-    We verify the secure hash server-side BEFORE trusting anything."""
+    We verify the secure hash server-side BEFORE trusting anything.
+
+    @csrf_exempt is REQUIRED — JazzCash's POST back doesn't carry a Django
+    CSRF token (it signs its own payload via pp_SecureHash). Without
+    csrf_exempt, Django rejects the callback with 403 and the payment
+    is silently lost."""
 
     def post(self, request, *args, **kwargs):
         if getattr(request, "limited", False):
@@ -569,7 +593,7 @@ class JazzCashReturnView(View):
         if is_successful and challan.status != FeeChallan.Status.PAID:
             FeeService.record_payment(
                 challan=challan,
-                amount=challan.balance,
+                amount=Decimal(meta.get("amount") or str(challan.balance)),
                 method=meta.get("method", "online"),
                 user=request.user if request.user.is_authenticated else None,
                 transaction_ref=meta.get("transaction_ref", ""),
