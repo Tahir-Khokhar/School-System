@@ -2,6 +2,7 @@ from django.conf import settings
 from django.db import models
 
 from apps.common.models import TimeStampedModel, AcademicYear, SchoolClass, Section, Subject
+from apps.common.validators import validate_file_extension, validate_file_size
 from apps.students.models import Student
 
 
@@ -21,7 +22,10 @@ class Homework(TimeStampedModel):
     description = models.TextField()
     assigned_date = models.DateField()
     due_date = models.DateField()
-    attachment = models.FileField(upload_to="homework/", blank=True, null=True)
+    attachment = models.FileField(
+        upload_to="homework/", blank=True, null=True,
+        validators=[validate_file_extension, validate_file_size],
+    )
     total_marks = models.DecimalField(max_digits=6, decimal_places=2, default=0)
     teacher = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
                                 related_name="assigned_homeworks")
@@ -36,7 +40,10 @@ class HomeworkSubmission(TimeStampedModel):
     homework = models.ForeignKey(Homework, on_delete=models.CASCADE, related_name="submissions")
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name="homework_submissions")
     submitted_at = models.DateTimeField(auto_now_add=True)
-    file = models.FileField(upload_to="homework_submissions/", blank=True, null=True)
+    file = models.FileField(
+        upload_to="homework_submissions/", blank=True, null=True,
+        validators=[validate_file_extension, validate_file_size],
+    )
     text = models.TextField(blank=True)
     marks = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
     feedback = models.TextField(blank=True)
