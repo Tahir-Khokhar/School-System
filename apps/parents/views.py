@@ -1,8 +1,11 @@
-from apps.accounts.mixins import StaffRequiredMixin
+"""Parent views — list, detail, create, update."""
+from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
+from django.db.models import Q
 from django.urls import reverse
 from django.views.generic import ListView, DetailView, CreateView, UpdateView
 
+from apps.accounts.mixins import StaffRequiredMixin
 from .models import Parent
 from .forms import ParentForm
 
@@ -15,9 +18,13 @@ class ParentListView(StaffRequiredMixin, ListView):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        q = self.request.GET.get("q")
+        q = (self.request.GET.get("q") or "").strip()[:100]
         if q:
-            qs = qs.filter(full_name__icontains=q) | qs.filter(cnic__icontains=q)
+            # Q() instead of `qs.filter(...) | qs.filter(...)` — the `|`
+            # operator loses ordering/select_related and can duplicate rows.
+            qs = qs.filter(
+                Q(full_name__icontains=q) | Q(cnic__icontains=q)
+            )
         return qs
 
 
@@ -40,12 +47,21 @@ class ParentCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx["breadcrumbs"] = [{"title": "Parents", "url": reverse("parents:parent_list")}, {"title": "New"}]
+        ctx["breadcrumbs"] = [
+            {"title": "Parents", "url": reverse("parents:parent_list")},
+            {"title": "New"},
+        ]
         return ctx
 
-    def get_success_url(self):
-        from django.contrib import messages
+    def form_valid(self, form):
+        # Messages belong in form_valid, not get_success_url.
+        # get_success_url can be called multiple times (e.g. by test client
+        # resolve()), causing duplicate flash messages.
+        response = super().form_valid(form)
         messages.success(self.request, "Parent added.")
+        return response
+
+    def get_success_url(self):
         return reverse("parents:parent_detail", args=[self.object.pk])
 
 
@@ -64,7 +80,10 @@ class ParentUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
         ]
         return ctx
 
-    def get_success_url(self):
-        from django.contrib import messages
+    def form_valid(self, form):
+        response = super().form_valid(form)
         messages.success(self.request, "Parent updated.")
+        return response
+
+    def get_success_url(self):
         return reverse("parents:parent_detail", args=[self.object.pk])
