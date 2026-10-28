@@ -128,10 +128,10 @@ class PaymentGatewayTest(TestCase):
             JazzCashGateway()
 
     def test_jazzcash_secure_hash(self):
-        """JazzCashGateway's secure hash uses MD5(salt + sorted values)."""
+        """JazzCashGateway's secure hash uses HMAC-SHA256(salt, values)."""
         from apps.fees.payment_gateway import JazzCashGateway
         # Manually construct without __init__ validation
         gw = JazzCashGateway.__new__(JazzCashGateway)
         gw.salt = "ABCDEF0123456789"
         result = gw._secure_hash(["val1", "val2", "val3"])
-        self.assertEqual(len(result), 32)  # MD5 hex digest is 32 chars
+        self.assertEqual(len(result), 64)  # SHA-256 hex digest is 64 chars
