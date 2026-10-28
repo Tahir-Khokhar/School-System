@@ -128,10 +128,23 @@ class PaymentGatewayTest(TestCase):
             JazzCashGateway()
 
     def test_jazzcash_secure_hash(self):
-        """JazzCashGateway's secure hash uses HMAC-SHA256(salt, values)."""
+        """JazzCashGateway's secure hash uses HMAC-SHA256(key=salt, message=salt+&+values)."""
         from apps.fees.payment_gateway import JazzCashGateway
+        import hmac, hashlib
         # Manually construct without __init__ validation
         gw = JazzCashGateway.__new__(JazzCashGateway)
         gw.salt = "ABCDEF0123456789"
         result = gw._secure_hash(["val1", "val2", "val3"])
-        self.assertEqual(len(result), 64)  # SHA-256 hex digest is 64 chars
+        # SHA-256 hex digest is 64 chars
+        self.assertEqual(len(result), 64)
+        # Known-answer test: manually compute the same hash and compare.
+        expected_message = "ABCDEF0123456789&val1&val2&val3"
+        expected = hmac.new(
+            "ABCDEF0123456789".encode("utf-8"),
+            expected_message.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest().upper()
+        self.assertEqual(result, expected)
+        # Verify the hash is deterministic (same input → same output)
+        result2 = gw._secure_hash(["val1", "val2", "val3"])
+        self.assertEqual(result, result2)
