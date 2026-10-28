@@ -385,13 +385,21 @@ class FeeDefaulterReportView(StaffRequiredMixin, PermissionRequiredMixin, ListVi
 # ---------------------------------------------------------------------------
 # PDF generation
 # ---------------------------------------------------------------------------
-class FeeChallanPDFView(StaffRequiredMixin, PermissionRequiredMixin, View):
-    """Render the challan as a printable PDF via WeasyPrint — APS-style 3-copy voucher."""
-    permission_required = "fees.view_feechallan"
+class FeeChallanPDFView(LoginRequiredMixin, View):
+    """Render the challan as a printable PDF via WeasyPrint.
 
+    Staff with fees.view_feechallan → see any challan PDF.
+    Students/parents → see ONLY their own challan PDF (ownership verified).
+    This prevents 403 when a student/parent clicks the PDF button in the portal.
+    """
     def get(self, request, *args, **kwargs):
         from weasyprint import HTML
         challan = get_object_or_404(FeeChallan, pk=kwargs["pk"])
+        # Ownership check — same as FeeChallanDetailView.
+        allowed, reason = _check_challan_ownership(request, challan)
+        if not allowed:
+            from django.core.exceptions import PermissionDenied
+            raise PermissionDenied(reason)
         # Reuse the same context-building logic as FeeChallanPrintView
         view = FeeChallanPrintView()
         view.object = challan
@@ -536,9 +544,22 @@ def stripe_webhook(request):
     # Record the payment (transaction-safe, idempotent)
     try:
         if challan.status != FeeChallan.Status.PAID:
+            # Use the VERIFIED amount from the gateway — NOT the current
+            # challan.balance (which may have changed since checkout).
+            # If the gateway didn't return an amount, LOG + REJECT rather
+            # than silently falling back to the (potentially stale) balance.
+            verified_amount_str = meta.get("amount")
+            if not verified_amount_str:
+                logger.error(
+                    "Stripe webhook: gateway did not return an amount for "
+                    "challan %s — rejecting to avoid recording a stale balance",
+                    challan.challan_no,
+                )
+                return HttpResponse("Missing amount in gateway response", status=500)
+            verified_amount = Decimal(verified_amount_str)
             FeeService.record_payment(
                 challan=challan,
-                amount=Decimal(meta.get("amount") or str(challan.balance)),
+                amount=verified_amount,
                 method=meta.get("method", "online"),
                 user=None,
                 transaction_ref=meta.get("transaction_ref", ""),
@@ -591,9 +612,25 @@ class JazzCashReturnView(View):
             messages.error(request, "Challan not found.")
             return redirect("dashboard:home")
         if is_successful and challan.status != FeeChallan.Status.PAID:
+            # Use the VERIFIED amount from JazzCash (pp_Amount) — NOT the
+            # current challan.balance. If amount is missing, log + reject.
+            verified_amount_str = meta.get("amount")
+            if not verified_amount_str:
+                logger.error(
+                    "JazzCash: gateway did not return an amount for challan %s "
+                    "— rejecting to avoid recording a stale balance",
+                    challan.challan_no,
+                )
+                messages.error(
+                    request,
+                    "Payment amount could not be verified. Please contact "
+                    "the school office with your transaction ID.",
+                )
+                return redirect("fees:challan_detail", pk=challan.pk)
+            verified_amount = Decimal(verified_amount_str)
             FeeService.record_payment(
                 challan=challan,
-                amount=Decimal(meta.get("amount") or str(challan.balance)),
+                amount=verified_amount,
                 method=meta.get("method", "online"),
                 user=request.user if request.user.is_authenticated else None,
                 transaction_ref=meta.get("transaction_ref", ""),
