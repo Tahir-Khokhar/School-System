@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+{% block content %}
+<h1 class="h3 fw-bold mb-3">Upload Document</h1>
+
+<div class="card">
+    <div class="card-body">
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            {{ form|crispy }}
+            {% if student %}
+            <p class="text-muted small">Uploading for: <strong>{{ student.full_name }} ({{ student.registration_no }})</strong></p>
+            {% endif %}
+            <button class="btn btn-primary mt-2">Upload</button>
+            <a href="{% url 'documents:list' %}" class="btn btn-outline-secondary mt-2">Cancel</a>
+        </form>
+    </div>
+</div>
+
+<div class="card mt-3">
+    <div class="card-header">Allowed file types</div>
+    <div class="card-body small text-muted">
+        <p>Allowed extensions: .pdf, .doc, .docx, .txt, .csv, .png, .jpg, .jpeg, .gif, .webp, .zip</p>
+        <p>Maximum file size: 10 MB.</p>
+    </div>
+</div>
+{% endblock %}
