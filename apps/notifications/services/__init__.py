@@ -1,1 +1,1 @@
-from .models import NotificationService  # noqa
+from apps.notifications.models import NotificationService
