@@ -219,23 +219,23 @@ class JazzCashGateway(PaymentGateway):
             raise PaymentGatewayError("JazzCash credentials not configured")
 
     def _secure_hash(self, sorted_fields: list) -> str:
-        """JazzCash CPG uses HMAC-SHA256 over '&'-joined sorted field values,
-        prefixed with the integrity salt.
+        """JazzCash CPG 2.0 secure hash.
 
-        NOTE: older JazzCash docs referenced MD5. The current CPG 2.0 spec
-        requires SHA-256. We use HMAC-SHA256 with the integrity salt as
-        the key for constant-time comparison on verification.
+        The official spec: take the integrity salt, append "&", then append
+        all non-empty sorted field values joined by "&", then SHA-256 the
+        whole string and uppercase the hex digest.
 
-        If your merchant account still uses the legacy MD5 spec, override
-        this method in a subclass. But MD5 is cryptographically broken —
-        an attacker who knows the salt can forge a valid hash in seconds.
+            hash = SHA256(integrity_salt + "&" + "&".join(sorted_values)).upper()
+
+        The salt IS part of the data (as a prefix) — it's NOT an HMAC key.
+        This matches the JazzCash CPG 2.0 sample code where the salt is
+        prepended to the field-value string before hashing.
+
+        If your merchant account uses the legacy MD5 spec, override this
+        method — but MD5 is cryptographically broken.
         """
-        data = "&".join(str(v) for v in sorted_fields)
-        return hmac.new(
-            self.salt.encode("utf-8"),
-            data.encode("utf-8"),
-            hashlib.sha256,
-        ).hexdigest().upper()
+        data_string = self.salt + "&" + "&".join(str(v) for v in sorted_fields)
+        return hashlib.sha256(data_string.encode("utf-8")).hexdigest().upper()
 
     def create_checkout(self, challan: FeeChallan, request) -> dict:
         # JazzCash expects a form POST from the browser, so we return the API URL
