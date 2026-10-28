@@ -184,9 +184,13 @@ RATELIMIT_VIEW = "apps.accounts.views.rate_limit_exceeded"
 
 # ---------------------------------------------------------------------------
 # Content Security Policy (CSP)
-# Base settings use strict CSP (NO 'unsafe-inline'). Dev settings override
-# to add 'unsafe-inline' for Chart.js + inline scripts during development.
-# Production inherits these strict settings — NO 'unsafe-inline' in prod.
+# Base settings use strict CSP for script-src (NO 'unsafe-inline') —
+# inline <script> blocks are moved to external files.
+# style-src allows 'unsafe-inline' because 52 templates use inline styles
+# (Bootstrap utility classes like style="display:none"). Rewriting all
+# 52 templates to use CSS classes instead is impractical for now.
+# Inline STYLES are low-risk for XSS (styles can't execute JS).
+# Inline SCRIPTS are high-risk (can execute arbitrary JS) — keep strict.
 # ---------------------------------------------------------------------------
 CSP_DEFAULT_SRC = ("'self'",)
 CSP_SCRIPT_SRC = (
@@ -196,6 +200,7 @@ CSP_SCRIPT_SRC = (
 )
 CSP_STYLE_SRC = (
     "'self'",
+    "'unsafe-inline'",  # 52 templates use inline styles — low XSS risk
     "https://cdn.jsdelivr.net",
     "https://fonts.googleapis.com",
 )
