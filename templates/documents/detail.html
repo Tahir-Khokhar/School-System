@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="h3 fw-bold mb-3">{{ document.name }}</h1>
+
+<div class="card mb-3">
+    <div class="card-header">Document Details</div>
+    <div class="card-body p-0">
+        <table class="table mb-0">
+            <tr><th class="w-25">Student</th><td>{{ document.student.full_name }} ({{ document.student.registration_no }})</td></tr>
+            <tr><th>Document name</th><td>{{ document.name }}</td></tr>
+            <tr><th>File</th><td>{{ document.file.name|cut:"student_documents/" }}</td></tr>
+            <tr><th>Uploaded by</th><td>{{ document.uploaded_by|default:"—" }}</td></tr>
+            <tr><th>Created at</th><td>{{ document.created_at|date:"M d, Y H:i" }}</td></tr>
+            {% if document.description %}<tr><th>Description</th><td>{{ document.description }}</td></tr>{% endif %}
+        </table>
+    </div>
+</div>
+
+<a href="{% url 'documents:download' document.pk %}" class="btn btn-success"><i class="bi bi-download"></i> Download</a>
+<a href="{% url 'documents:list' %}" class="btn btn-outline-secondary">Back to list</a>
+{% if perms.documents.delete_studentdocument %}
+<form method="post" action="{% url 'documents:delete' document.pk %}" class="d-inline" onsubmit="return confirm('Delete this document? This cannot be undone.');">
+    {% csrf_token %}
+    <button class="btn btn-danger"><i class="bi bi-trash"></i> Delete</button>
+</form>
+{% endif %}
+{% endblock %}
