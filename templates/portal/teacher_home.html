@@ -1,1 +1,192 @@
-{% extends "base.html" %}{% block content %}{% if teacher %}<div class="mb-3"><h1 class="h3 fw-bold mb-0">Welcome, {{ teacher.full_name }}</h1><p class="text-muted-2 small mb-0">Employee ID: {{ teacher.employee_id }} · Designation: {{ teacher.designation|default:"—" }}</p></div><div class="row g-3 mb-4"><div class="col-6 col-md-3"><div class="stat-card"><div class="stat-icon bg-soft-primary"><i class="bi bi-mortarboard"></i></div><div class="stat-label">My Classes</div><div class="stat-value">{{ my_classes.count }}</div></div></div><div class="col-6 col-md-3"><div class="stat-card"><div class="stat-icon bg-soft-info"><i class="bi bi-journal-bookmark"></i></div><div class="stat-label">My Subjects</div><div class="stat-value">{{ my_subjects.count }}</div></div></div><div class="row g-3"><div class="col-md-6"><div class="card"><div class="card-header">My Classes</div><div class="card-body p-0"><ul class="list-group list-group-flush">{% for c in my_classes %}<li class="list-group-item">{{ c.name }}</li>{% empty %}<li class="list-group-item text-muted-2">No classes assigned</li>{% endfor %}</ul></div></div></div><div class="col-md-6"><div class="card"><div class="card-header">My Subjects</div><div class="card-body p-0"><ul class="list-group list-group-flush">{% for s in my_subjects %}<li class="list-group-item">{{ s.name }}</li>{% empty %}<li class="list-group-item text-muted-2">No subjects assigned</li>{% endfor %}</ul></div></div></div></div>{% else %}<div class="alert alert-warning">No teacher profile linked to your account. Please contact the school administration.</div>{% endif %}{% endblock %}
+{% extends "base.html" %}
+{% load humanize static %}
+{% block title %}Teacher Dashboard · {{ school_name }}{% endblock %}
+
+{% block content %}
+<style>
+  .portal-sidebar { background: var(--aps-green-dark); min-height: calc(100vh - 60px); padding: 1rem 0; }
+  .portal-sidebar a { display: block; color: #c8e6c9; padding: 10px 18px; font-size: 14px; text-decoration: none; border-left: 3px solid transparent; transition: all .15s ease; }
+  .portal-sidebar a:hover, .portal-sidebar a.active { background: rgba(212,175,55,.12); color: var(--aps-gold); border-left-color: var(--aps-gold); }
+  .portal-sidebar a i { width: 20px; margin-right: 8px; }
+  .portal-sidebar .sidebar-heading { color: rgba(212,175,55,.5); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; padding: 12px 18px 6px; font-weight: 700; }
+</style>
+
+<div class="container-fluid">
+  <div class="row">
+    <!-- Teacher Portal Sidebar -->
+    <div class="col-md-2 d-none d-md-block portal-sidebar p-0">
+      <div class="sidebar-heading">Teacher Portal</div>
+      <a href="{% url 'portal:teacher_home' %}" class="active"><i class="bi bi-grid-1x2"></i>Dashboard</a>
+      <a href="{% url 'attendance:daily_mark' %}"><i class="bi bi-check2-square"></i>Attendance</a>
+      <a href="{% url 'diary:entry_list' %}"><i class="bi bi-journal-text"></i>Diary</a>
+      <a href="{% url 'homework:homework_list' %}"><i class="bi bi-pencil-square"></i>Homework</a>
+      <a href="{% url 'syllabus:syllabus_list' %}"><i class="bi bi-list-task"></i>Syllabus</a>
+      <a href="{% url 'examinations:classtest_list' %}"><i class="bi bi-journal-medical"></i>Tests</a>
+      <div class="sidebar-heading">Employment</div>
+      <a href="{% url 'payroll:payroll_list' %}?q={{ teacher.employee_id|default:'' }}"><i class="bi bi-cash-coin"></i>My Salary</a>
+      <a href="{% url 'announcements:list' %}"><i class="bi bi-megaphone"></i>Notices</a>
+      <a href="{% url 'notifications:list' %}"><i class="bi bi-bell"></i>Notifications</a>
+      <div class="sidebar-heading">Account</div>
+      <a href="{% url 'password_change' %}"><i class="bi bi-key"></i>Change Password</a>
+      <a href="{% url 'logout' %}"><i class="bi bi-box-arrow-right"></i>Logout</a>
+    </div>
+
+    <!-- Main content area -->
+    <div class="col-md-10 p-4">
+      {% if teacher %}
+      <!-- Welcome area -->
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <div class="d-flex align-items-center gap-3">
+          <div class="avatar-sm" style="width:64px;height:64px;font-size:1.8rem;background:var(--aps-green);color:var(--aps-gold);">{{ teacher.full_name|slice:":1"|upper }}</div>
+          <div>
+            <h1 class="h3 fw-bold mb-0" style="color:var(--aps-green);">Welcome, {{ teacher.full_name }}</h1>
+            <p class="text-muted-2 small mb-0">{{ teacher.employee_id }} · {{ teacher.designation|default:"Teacher" }} · {{ teacher.get_teaching_level_display|default:"" }}</p>
+          </div>
+        </div>
+        <div>
+          <a href="{% url 'attendance:daily_mark' %}" class="btn btn-success btn-sm" style="background:var(--aps-green);border-color:var(--aps-green);"><i class="bi bi-check2-square me-1"></i>Mark Attendance</a>
+          <a href="{% url 'payroll:payroll_list' %}?q={{ teacher.employee_id|default:'' }}" class="btn btn-outline-success btn-sm"><i class="bi bi-cash-coin me-1"></i>My Salary</a>
+        </div>
+      </div>
+
+      <!-- Dashboard cards -->
+      <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+          <div class="stat-card text-center">
+            <div class="stat-icon bg-soft-primary mx-auto"><i class="bi bi-mortarboard"></i></div>
+            <div class="stat-label mt-2">My Classes</div>
+            <div class="stat-value" style="color:var(--aps-green);">{{ my_classes.count|default:0 }}</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-card text-center">
+            <div class="stat-icon bg-soft-info mx-auto"><i class="bi bi-journal-bookmark"></i></div>
+            <div class="stat-label mt-2">My Subjects</div>
+            <div class="stat-value" style="color:var(--aps-green);">{{ my_subjects.count|default:0 }}</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-card text-center">
+            <div class="stat-icon bg-soft-success mx-auto"><i class="bi bi-check-circle"></i></div>
+            <div class="stat-label mt-2">Attendance Marked Today</div>
+            <div class="stat-value" style="color:var(--aps-green);">{{ today_attendance_count|default:0 }}</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-card text-center">
+            <div class="stat-icon bg-soft-warning mx-auto"><i class="bi bi-cash-coin"></i></div>
+            <div class="stat-label mt-2">Salary Slips</div>
+            <div class="stat-value" style="color:var(--aps-gold-dark);">{{ teacher.payrolls.count|default:0 }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Actions -->
+      <h5 class="mb-3" style="color:var(--aps-green);">Quick Actions</h5>
+      <div class="row g-2 mb-4">
+        <div class="col-6 col-md-3"><a href="{% url 'attendance:daily_mark' %}" class="btn btn-outline-success w-100"><i class="bi bi-check2-square me-1"></i>Mark Attendance</a></div>
+        <div class="col-6 col-md-3"><a href="{% url 'diary:entry_list' %}" class="btn btn-outline-success w-100"><i class="bi bi-journal-text me-1"></i>Diary</a></div>
+        <div class="col-6 col-md-3"><a href="{% url 'homework:homework_list' %}" class="btn btn-outline-success w-100"><i class="bi bi-pencil-square me-1"></i>Homework</a></div>
+        <div class="col-6 col-md-3"><a href="{% url 'examinations:classtest_list' %}" class="btn btn-outline-success w-100"><i class="bi bi-journal-medical me-1"></i>Tests</a></div>
+        <div class="col-6 col-md-3"><a href="{% url 'syllabus:syllabus_list' %}" class="btn btn-outline-success w-100"><i class="bi bi-list-task me-1"></i>Syllabus</a></div>
+        <div class="col-6 col-md-3"><a href="{% url 'payroll:payroll_list' %}?q={{ teacher.employee_id|default:'' }}" class="btn btn-outline-success w-100"><i class="bi bi-cash-coin me-1"></i>My Salary</a></div>
+        <div class="col-6 col-md-3"><a href="{% url 'announcements:list' %}" class="btn btn-outline-success w-100"><i class="bi bi-megaphone me-1"></i>Notices</a></div>
+        <div class="col-6 col-md-3"><a href="{% url 'notifications:list' %}" class="btn btn-outline-success w-100"><i class="bi bi-bell me-1"></i>Alerts</a></div>
+      </div>
+
+      <!-- My Classes + My Subjects -->
+      <div class="row g-3">
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header"><i class="bi bi-mortarboard me-2"></i>My Classes</div>
+            <div class="card-body p-0">
+              <ul class="list-group list-group-flush">
+                {% for c in my_classes %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                  <span>{{ c.name }}</span>
+                  <span class="badge bg-soft-primary">{{ c.student_count|default:0 }} students</span>
+                </li>
+                {% empty %}
+                <li class="list-group-item text-muted-2">No classes assigned</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header"><i class="bi bi-journal-bookmark me-2"></i>My Subjects</div>
+            <div class="card-body p-0">
+              <ul class="list-group list-group-flush">
+                {% for s in my_subjects %}
+                <li class="list-group-item">{{ s.name }}</li>
+                {% empty %}
+                <li class="list-group-item text-muted-2">No subjects assigned</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- My Salary section -->
+      <h5 class="mb-3 mt-4" style="color:var(--aps-green);"><i class="bi bi-cash-coin me-2"></i>My Salary</h5>
+      <div class="card mb-4">
+        <div class="card-body p-0">
+          {% if teacher.payrolls.exists %}
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr>
+                <th>Month</th>
+                <th>Basic</th>
+                <th>Allowances</th>
+                <th>Deductions</th>
+                <th>Net Salary</th>
+                <th>Status</th>
+                <th class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in teacher.payrolls.all|slice:":5" %}
+              <tr>
+                <td><strong>{{ p.month }}</strong></td>
+                <td>{{ currency_symbol|default:"Rs." }}{{ p.basic_salary|floatformat:0|intcomma }}</td>
+                <td>{{ currency_symbol|default:"Rs." }}{{ p.allowances|floatformat:0|intcomma }}</td>
+                <td>{{ currency_symbol|default:"Rs." }}{{ p.deductions|floatformat:0|intcomma }}</td>
+                <td><strong style="color:var(--aps-green);">{{ currency_symbol|default:"Rs." }}{{ p.net_salary|floatformat:0|intcomma }}</strong></td>
+                <td><span class="badge badge-{{ p.status }}">{{ p.get_status_display }}</span></td>
+                <td class="text-end">
+                  <a href="{% url 'payroll:payroll_detail' p.pk %}" class="btn btn-sm btn-outline-success"><i class="bi bi-eye"></i></a>
+                  {% if p.status == 'paid' %}
+                  <a href="{% url 'payroll:salary_slip_pdf' p.pk %}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-file-pdf"></i></a>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <div class="empty-state"><i class="bi bi-cash-coin"></i><p>No salary records yet.</p></div>
+          {% endif %}
+        </div>
+      </div>
+
+      {% else %}
+      <div class="alert alert-warning">
+        <h5><i class="bi bi-exclamation-triangle me-2"></i>No teacher profile linked</h5>
+        <p class="mb-0">Your user account is not linked to a Teacher record. Please contact the school administration.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Mobile bottom nav -->
+<div class="portal-bottom-nav" style="display:none;">
+  <a href="{% url 'portal:teacher_home' %}"><i class="bi bi-house"></i>Home</a>
+  <a href="{% url 'attendance:daily_mark' %}"><i class="bi bi-check2-square"></i>Attendance</a>
+  <a href="{% url 'homework:homework_list' %}"><i class="bi bi-pencil-square"></i>Homework</a>
+  <a href="{% url 'payroll:payroll_list' %}?q={{ teacher.employee_id|default:'' }}"><i class="bi bi-cash-coin"></i>Salary</a>
+  <a href="{% url 'notifications:list' %}"><i class="bi bi-bell"></i>Alerts</a>
+</div>
+{% endblock %}
