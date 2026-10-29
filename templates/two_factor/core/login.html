@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load humanize %}
+{% load humanize static %}
 {% load crispy_forms_tags %}
 {% block title %}{{ school_name|default:"Army Public School Lahore" }} — Sign in to MyAPS{% endblock %}
 
@@ -380,33 +380,5 @@
   </div>
 </div>
 
-<script>
-  // Toggle password visibility
-  document.getElementById('togglePw').addEventListener('click', function() {
-    var pw = document.getElementById('id_auth-password');
-    var icon = this.querySelector('i');
-    if (pw.type === 'password') {
-      pw.type = 'text';
-      icon.classList.remove('bi-eye');
-      icon.classList.add('bi-eye-slash');
-    } else {
-      pw.type = 'password';
-      icon.classList.remove('bi-eye-slash');
-      icon.classList.add('bi-eye');
-    }
-  });
-
-  // Auto-set portal tab active based on ?next= param
-  (function() {
-    var next = new URLSearchParams(window.location.search).get('next') || '';
-    var tabs = document.querySelectorAll('.aps-portal-tab');
-    tabs.forEach(function(t) {
-      var portal = t.getAttribute('data-portal');
-      if (next.indexOf(portal) !== -1) {
-        tabs.forEach(function(x) { x.classList.remove('active'); });
-        t.classList.add('active');
-      }
-    });
-  })();
-</script>
+<script src="{% static 'js/login.js' %}"></script>
 {% endblock %}
