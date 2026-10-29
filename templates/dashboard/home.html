@@ -71,7 +71,7 @@
                 <span class="text-muted-2 small">last 6 months</span>
             </div>
             <div class="card-body">
-                <canvas id="feeChart" data-enabled="true" height="120"></canvas>
+                <canvas id="feeChart" data-enabled="true" data-labels='{{ collection_labels_json|safe }}' data-values='{{ collection_values_json|safe }}' height="120"></canvas>
             </div>
         </div>
         {% else %}
@@ -90,7 +90,7 @@
         <div class="card h-100">
             <div class="card-header"><i class="bi bi-bar-chart me-2"></i>Enrollment by Class</div>
             <div class="card-body">
-                <canvas id="enrollChart" height="200"></canvas>
+                <canvas id="enrollChart" data-enrollment='{{ enrollment_data_json|safe }}' height="200"></canvas>
             </div>
         </div>
     </div>
@@ -195,50 +195,5 @@
     </div>
 </div>
 
-<script>
-document.addEventListener('DOMContentLoaded', function(){
-    var feeCtx = document.getElementById('feeChart');
-    if (feeCtx && window.Chart && feeCtx.dataset.enabled === 'true') {
-        new Chart(feeCtx, {
-            type: 'line',
-            data: {
-                labels: {{ collection_labels_json|safe }},
-                datasets: [{
-                    label: 'Collection',
-                    data: {{ collection_values_json|safe }},
-                    borderColor: '#4f46e5',
-                    backgroundColor: 'rgba(79,70,229,.08)',
-                    fill: true,
-                    tension: .35,
-                    pointRadius: 4
-                }]
-            },
-            options: {
-                plugins: { legend: { display: false } },
-                scales: { y: { beginAtZero: true } }
-            }
-        });
-    }
-    var enrollCtx = document.getElementById('enrollChart');
-    if (enrollCtx && window.Chart) {
-        var enrollment = {{ enrollment_data_json|safe }};
-        new Chart(enrollCtx, {
-            type: 'bar',
-            data: {
-                labels: enrollment.map(function(e){return e.name;}),
-                datasets: [{
-                    label: 'Students',
-                    data: enrollment.map(function(e){return e.count;}),
-                    backgroundColor: '#4f46e5',
-                }]
-            },
-            options: {
-                indexAxis: 'y',
-                plugins: { legend: { display: false } },
-                scales: { x: { beginAtZero: true } }
-            }
-        });
-    }
-});
-</script>
+<script src="{% static 'js/dashboard.js' %}"></script>
 {% endblock %}
