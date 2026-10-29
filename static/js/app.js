@@ -3,13 +3,37 @@
 // All inline <script> blocks have been moved here for strict CSP compliance.
 
 document.addEventListener('DOMContentLoaded', function() {
+
+    // ---- Generic data-confirm handler ----
+    // Any form with data-confirm="message" will show a confirm dialog before submitting.
+    // Works for: academic year activation, document deletes, phone deletes, etc.
+    document.querySelectorAll('form[data-confirm]').forEach(function(form) {
+        form.addEventListener('submit', function(e) {
+            var msg = form.getAttribute('data-confirm') || 'Are you sure?';
+            if (!window.confirm(msg)) {
+                e.preventDefault();
+            }
+        });
+    });
+
+    // ---- Also handle data-delete-confirm (alias for data-confirm) ----
+    document.querySelectorAll('form[data-delete-confirm]').forEach(function(form) {
+        form.addEventListener('submit', function(e) {
+            var msg = form.getAttribute('data-delete-confirm') || 'Delete this item?';
+            if (!window.confirm(msg)) {
+                e.preventDefault();
+            }
+        });
+    });
+
     // ---- Toast auto-hide ----
-    var toasts = document.querySelectorAll('.toast');
-    toasts.forEach(function(t) {
+    // Toasts with data-auto-hide="5000" will auto-dismiss after 5 seconds.
+    document.querySelectorAll('.toast[data-auto-hide]').forEach(function(t) {
+        var delay = parseInt(t.getAttribute('data-auto-hide')) || 5000;
         setTimeout(function() {
-            t.classList.remove('show');
-            setTimeout(function() { t.remove(); }, 300);
-        }, 5000);
+            var toast = new bootstrap.Toast(t);
+            toast.hide();
+        }, delay);
     });
 
     // ---- Sidebar toggle (mobile) ----
@@ -22,17 +46,24 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // ---- Sidebar close button (mobile) ----
-    var sidebarClose = document.querySelector('.sidebar .btn-close, .sidebar button.bi-x-lg');
-    if (sidebarClose && mainWrapper) {
-        // Find the close button by its onclick or class
-        var closeBtn = document.querySelector('.sidebar button[onclick*="sidebar"]');
-        if (closeBtn) {
-            closeBtn.removeAttribute('onclick'); // Remove inline handler
-            closeBtn.addEventListener('click', function() {
-                mainWrapper.classList.remove('sidebar-open');
-            });
-        }
+    var sidebarCloseBtn = document.getElementById('sidebarCloseBtn');
+    if (sidebarCloseBtn && mainWrapper) {
+        sidebarCloseBtn.addEventListener('click', function() {
+            mainWrapper.classList.remove('sidebar-open');
+        });
     }
+
+    // ---- Active sidebar link highlighting ----
+    // Highlights the nav link whose href matches the current page URL.
+    var currentPath = window.location.pathname;
+    document.querySelectorAll('.sidebar-nav .nav-link, .portal-sidebar a').forEach(function(link) {
+        var href = link.getAttribute('href');
+        if (href && href !== '#' && currentPath.indexOf(href) === 0 && href !== '/') {
+            link.classList.add('active');
+        } else if (href === currentPath) {
+            link.classList.add('active');
+        }
+    });
 
     // ---- Global search (Ctrl+K) ----
     document.addEventListener('keydown', function(e) {
@@ -43,17 +74,44 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // ---- Theme toggle ----
+    // ---- Theme toggle (writes BOTH cookie and localStorage) ----
     var themeToggle = document.getElementById('themeToggle');
     if (themeToggle) {
         themeToggle.addEventListener('click', function() {
             var html = document.documentElement;
             var current = html.getAttribute('data-bs-theme');
-            html.setAttribute('data-bs-theme', current === 'dark' ? 'light' : 'dark');
-            localStorage.setItem('theme', html.getAttribute('data-bs-theme'));
+            var newTheme = current === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-bs-theme', newTheme);
+            // Write localStorage for JS reads.
+            localStorage.setItem('theme', newTheme);
+            // Write cookie so server-side template (base.html) reads it
+            // on the NEXT page load — prevents the "light flash" on dark-mode users.
+            document.cookie = 'theme=' + newTheme + ';path=/;max-age=31536000';
         });
-        // Restore saved theme
-        var saved = localStorage.getItem('theme');
-        if (saved) document.documentElement.setAttribute('data-bs-theme', saved);
+        // Restore saved theme from cookie (preferred) or localStorage.
+        var cookieMatch = document.cookie.match(/theme=(dark|light)/);
+        var saved = cookieMatch ? cookieMatch[1] : localStorage.getItem('theme');
+        if (saved) {
+            document.documentElement.setAttribute('data-bs-theme', saved);
+        }
+    }
+
+    // ---- Mark All Present button (attendance page) ----
+    var markAllBtn = document.getElementById('markAllPresentBtn');
+    if (markAllBtn) {
+        markAllBtn.addEventListener('click', function() {
+            document.querySelectorAll('select[name^="form-"][name$="-status"]').forEach(function(s) {
+                s.value = 'present';
+            });
+        });
+    }
+
+    // ---- Landing page nav toggle ----
+    var navToggle = document.getElementById('mainNavToggle');
+    var mainNav = document.getElementById('mainNav');
+    if (navToggle && mainNav) {
+        navToggle.addEventListener('click', function() {
+            mainNav.classList.toggle('open');
+        });
     }
 });
