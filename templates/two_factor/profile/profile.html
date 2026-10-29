@@ -18,7 +18,7 @@
             <li>
               {{ phone|as_action }}
               <form method="post" action="{% url 'phone_delete' phone.id %}"
-                  onsubmit="return confirm({% trans 'Are you sure?' %})">
+                  data-confirm="{% trans 'Are you sure?' %}">
                 {% csrf_token %}
                 <button class="btn btn-sm btn-warning"
                       type="submit">{% trans "Unregister" %}</button>
