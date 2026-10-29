@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load humanize %}
+{% load humanize static %}
 {% block title %}{{ school_name|default:"Army Public School Lahore" }} — Empowering Students, Connecting Parents{% endblock %}
 
 {% block auth_content %}
@@ -262,7 +262,7 @@ body { font-family: 'Inter', system-ui, sans-serif; background: #fff; color: #1a
           <span class="brand-sub d-block">Est. 2005 · Lahore Cantt</span>
         </span>
       </a>
-      <button class="lps-nav-toggle" aria-label="Toggle navigation" aria-expanded="false" onclick="document.getElementById('mainNav').classList.toggle('open')">
+      <button class="lps-nav-toggle" id="mainNavToggle" aria-label="Toggle navigation" aria-expanded="false">
         <i class="bi bi-list"></i>
       </button>
       <nav class="nav-links d-flex align-items-center" aria-label="Main navigation">
@@ -588,26 +588,5 @@ body { font-family: 'Inter', system-ui, sans-serif; background: #fff; color: #1a
   </div>
 </footer>
 
-<script>
-// Mobile nav toggle — close on link click
-document.querySelectorAll('.lps-navbar .nav-links a').forEach(function(link) {
-  link.addEventListener('click', function() {
-    document.getElementById('mainNav').classList.remove('open');
-  });
-});
-
-// Active nav highlight on scroll
-var sections = document.querySelectorAll('section[id]');
-var navLinks = document.querySelectorAll('.lps-navbar .nav-links a');
-window.addEventListener('scroll', function() {
-  var current = '';
-  sections.forEach(function(sec) {
-    if (window.scrollY >= (sec.offsetTop - 100)) current = sec.id;
-  });
-  navLinks.forEach(function(link) {
-    link.classList.remove('active');
-    if (link.getAttribute('href') === '#' + current) link.classList.add('active');
-  });
-});
-</script>
+<script src="{% static 'js/landing.js' %}"></script>
 {% endblock %}
