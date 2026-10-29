@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block content %}
 <h1 class="h3 fw-bold mb-3">Documents</h1>
 
@@ -36,7 +37,7 @@
                         <a href="{% url 'documents:detail' d.pk %}" class="btn btn-sm btn-outline-primary">View</a>
                         <a href="{% url 'documents:download' d.pk %}" class="btn btn-sm btn-outline-success">Download</a>
                         {% if perms.documents.delete_studentdocument %}
-                        <form method="post" action="{% url 'documents:delete' d.pk %}" class="d-inline" onsubmit="return confirm('Delete this document?');">
+                        <form method="post" action="{% url 'documents:delete' d.pk %}" class="d-inline" data-delete-confirm="Delete this document?">
                             {% csrf_token %}
                             <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
                         </form>
@@ -59,4 +60,5 @@
     {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a></li>{% endif %}
 </ul></nav>
 {% endif %}
+<script src="{% static 'js/documents.js' %}"></script>
 {% endblock %}
