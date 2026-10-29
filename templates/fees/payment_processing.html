@@ -1,9 +1,10 @@
 {% extends "base.html" %}
+{% load static %}
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-6">
         <div class="card text-center">
-            <div class="card-body p-5">
+            <div class="card-body p-5" data-challan-status="{% if challan %}{{ challan.status }}{% else %}unknown{% endif %}">
                 <div class="spinner-border text-primary mb-3" role="status"></div>
                 <h2 class="h4 mb-2">Processing your payment...</h2>
                 <p class="text-muted-2 mb-4">We're waiting for the payment gateway to confirm your transaction. This page will refresh automatically when the payment is verified.</p>
@@ -14,5 +15,5 @@
         </div>
     </div>
 </div>
-<script>setTimeout(function(){location.reload();}, 5000);</script>
+<script src="{% static 'js/payment_processing.js' %}"></script>
 {% endblock %}
