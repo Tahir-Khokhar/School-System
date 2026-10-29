@@ -1,23 +1,26 @@
-// login.js — password show/hide toggle for the login page.
-// Extracted from inline <script> for strict CSP compliance.
+// landing.js — landing page specific JavaScript.
+// Extracted from inline <script> in landing.html for strict CSP.
 
 document.addEventListener('DOMContentLoaded', function() {
-    var toggle = document.getElementById('passwordToggle');
-    var passwordField = document.getElementById('id_password');
-    if (!toggle || !passwordField) {
-        // Try two_factor field names
-        passwordField = document.querySelector('input[name="auth-password"]');
-        toggle = document.getElementById('passwordToggle');
-    }
-    if (toggle && passwordField) {
-        toggle.addEventListener('click', function() {
-            var type = passwordField.getAttribute('type') === 'password' ? 'text' : 'password';
-            passwordField.setAttribute('type', type);
-            var icon = toggle.querySelector('i');
-            if (icon) {
-                icon.classList.toggle('bi-eye');
-                icon.classList.toggle('bi-eye-slash');
-            }
+    // Mobile nav toggle — close on link click
+    document.querySelectorAll('.lps-navbar .nav-links a').forEach(function(link) {
+        link.addEventListener('click', function() {
+            var mainNav = document.getElementById('mainNav');
+            if (mainNav) mainNav.classList.remove('open');
         });
-    }
+    });
+
+    // Active nav highlight on scroll
+    var sections = document.querySelectorAll('section[id]');
+    var navLinks = document.querySelectorAll('.lps-navbar .nav-links a');
+    window.addEventListener('scroll', function() {
+        var current = '';
+        sections.forEach(function(sec) {
+            if (window.scrollY >= (sec.offsetTop - 100)) current = sec.id;
+        });
+        navLinks.forEach(function(link) {
+            link.classList.remove('active');
+            if (link.getAttribute('href') === '#' + current) link.classList.add('active');
+        });
+    });
 });
