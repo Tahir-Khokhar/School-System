@@ -4,22 +4,14 @@
 
 document.addEventListener('DOMContentLoaded', function() {
 
-    // ---- Generic data-confirm handler ----
+    // ---- Generic data-confirm handler (also used for document deletes) ----
     // Any form with data-confirm="message" will show a confirm dialog before submitting.
     // Works for: academic year activation, document deletes, phone deletes, etc.
+    // NOTE: documents.js was deleted to avoid double-confirm. All confirmations
+    // go through this single handler.
     document.querySelectorAll('form[data-confirm]').forEach(function(form) {
         form.addEventListener('submit', function(e) {
             var msg = form.getAttribute('data-confirm') || 'Are you sure?';
-            if (!window.confirm(msg)) {
-                e.preventDefault();
-            }
-        });
-    });
-
-    // ---- Also handle data-delete-confirm (alias for data-confirm) ----
-    document.querySelectorAll('form[data-delete-confirm]').forEach(function(form) {
-        form.addEventListener('submit', function(e) {
-            var msg = form.getAttribute('data-delete-confirm') || 'Delete this item?';
             if (!window.confirm(msg)) {
                 e.preventDefault();
             }
