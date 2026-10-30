@@ -36,26 +36,7 @@
 
 <div class="container-fluid">
   <div class="row">
-    <!-- Teacher Portal Sidebar -->
-    <div class="col-md-2 d-none d-md-block portal-sidebar p-0">
-      <div class="sidebar-heading">Teacher Portal</div>
-      <a href="{% url 'portal:teacher_home' %}" class="active"><i class="bi bi-grid-1x2"></i>Dashboard</a>
-      <a href="{% url 'attendance:daily_mark' %}"><i class="bi bi-check2-square"></i>Attendance</a>
-      <a href="{% url 'diary:entry_list' %}"><i class="bi bi-journal-text"></i>Diary</a>
-      <a href="{% url 'homework:homework_list' %}"><i class="bi bi-pencil-square"></i>Homework</a>
-      <a href="{% url 'syllabus:syllabus_list' %}"><i class="bi bi-list-task"></i>Syllabus</a>
-      <a href="{% url 'examinations:classtest_list' %}"><i class="bi bi-journal-medical"></i>Tests</a>
-      {% if perms.payroll.view_payroll %}
-      <div class="sidebar-heading">Employment</div>
-      <a href="{% url 'payroll:payroll_list' %}?q={{ teacher.employee_id|default:'' }}"><i class="bi bi-cash-coin"></i>My Salary</a>
-      {% endif %}
-      <a href="{% url 'announcements:list' %}"><i class="bi bi-megaphone"></i>Notices</a>
-      <a href="{% url 'notifications:list' %}"><i class="bi bi-bell"></i>Notifications</a>
-      <div class="sidebar-heading">Account</div>
-      <a href="{% url 'password_change' %}"><i class="bi bi-key"></i>Change Password</a>
-      <a href="{% url 'logout' %}"><i class="bi bi-box-arrow-right"></i>Logout</a>
-    </div>
-
+    
     <!-- Main content area -->
     <div class="col-md-10 p-4">
       {% if teacher %}
