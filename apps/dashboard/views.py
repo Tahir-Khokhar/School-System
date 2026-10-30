@@ -3,6 +3,7 @@ import json
 from collections import Counter, defaultdict
 from datetime import timedelta
 from django.db.models import Count, Sum, Q
+from django.shortcuts import redirect
 from django.utils import timezone
 from django.views.generic import TemplateView
 
@@ -18,15 +19,28 @@ from apps.announcements.models import Announcement
 from apps.common.models import AcademicYear, SchoolClass
 
 
-class DashboardHomeView(StaffRequiredMixin, TemplateView):
-    """Admin dashboard — staff-only.
-
-    Students and parents are bounced to their own portal (handled by
-    StaffRequiredMixin's PermissionDenied redirect). Senior admin roles see
-    the full dashboard with financial KPIs; coordinator/teacher roles see
-    the dashboard but with financial widgets replaced by academic ones.
+class DashboardHomeView(TemplateView):
+    """Role-aware dashboard — redirects students/parents/teachers to their
+    own portal instead of returning 403. Only admin staff see the staff dashboard.
     """
     template_name = "dashboard/home.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return self.handle_no_permission()
+        user = request.user
+        # Redirect students/parents/teachers to their own portal.
+        if user.role == "student":
+            return redirect("portal:student_home")
+        if user.role == "parent":
+            return redirect("portal:parent_home")
+        if user.role == "teacher":
+            return redirect("portal:teacher_home")
+        # Admin staff (super_admin, admin, principal, coordinator, accountant,
+        # hr_payroll, receptionist) see the full staff dashboard.
+        if not (user.is_superuser or user.is_admin_staff):
+            return redirect("login")
+        return super().dispatch(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
