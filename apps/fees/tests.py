@@ -59,6 +59,11 @@ class FeeServiceTest(TestCase):
 
     def test_partial_payment_status(self):
         challan = FeeService.generate_monthly_challan(self.student, "October 2026", self.year, self.user)
+        # Set a FUTURE due date so no late fee is added (balance = 5000, not 5500).
+        # Without this, the test breaks when the calendar crosses the due_date
+        # + 7-day grace period boundary.
+        challan.due_date = date.today() + timedelta(days=30)
+        challan.save()
         FeeService.record_payment(challan, Decimal("3000"), "cash", self.user)
         challan.refresh_from_db()
         self.assertEqual(challan.status, FeeChallan.Status.PARTIAL)
