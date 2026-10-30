@@ -1,12 +1,17 @@
 // dashboard.js — chart rendering for dashboard/home.html
 // Extracted from inline <script> for strict CSP compliance.
+// Reads chart data from <script type="application/json" id="…"> elements
+// (rendered by Django's json_script template tag) instead of inline data
+// attributes — prevents XSS from class names containing apostrophes.
 
 document.addEventListener('DOMContentLoaded', function() {
     // Fee collection chart
     var feeCtx = document.getElementById('feeChart');
     if (feeCtx && window.Chart && feeCtx.dataset.enabled === 'true') {
-        var labels = JSON.parse(feeCtx.dataset.labels || '[]');
-        var values = JSON.parse(feeCtx.dataset.values || '[]');
+        var labelsEl = document.getElementById('fee-chart-labels');
+        var valuesEl = document.getElementById('fee-chart-values');
+        var labels = labelsEl ? JSON.parse(labelsEl.textContent) : [];
+        var values = valuesEl ? JSON.parse(valuesEl.textContent) : [];
         new Chart(feeCtx, {
             type: 'line',
             data: {
@@ -31,7 +36,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Enrollment by class chart
     var enrollCtx = document.getElementById('enrollChart');
     if (enrollCtx && window.Chart) {
-        var enrollment = JSON.parse(enrollCtx.dataset.enrollment || '[]');
+        var enrollmentEl = document.getElementById('enrollment-data');
+        var enrollment = enrollmentEl ? JSON.parse(enrollmentEl.textContent) : [];
         new Chart(enrollCtx, {
             type: 'bar',
             data: {
@@ -43,8 +49,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 }]
             },
             options: {
+                indexAxis: 'y',
                 plugins: { legend: { display: false } },
-                scales: { y: { beginAtZero: true } }
+                scales: { x: { beginAtZero: true } }
             }
         });
     }
