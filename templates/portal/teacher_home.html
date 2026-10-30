@@ -2,6 +2,29 @@
 {% load humanize static %}
 {% block title %}Teacher Dashboard · {{ school_name }}{% endblock %}
 
+{% block sidebar %}
+<aside class="portal-sidebar" id="sidebar" style="background:var(--aps-green-dark);min-height:calc(100vh - 60px);padding:1rem 0;position:fixed;left:0;top:60px;width:220px;overflow-y:auto;z-index:1000;">
+  <div class="sidebar-heading" style="color:rgba(212,175,55,.5);font-size:10px;text-transform:uppercase;letter-spacing:1px;padding:12px 18px 6px;font-weight:700;">Teacher Portal</div>
+  <a href="{% url 'portal:teacher_home' %}" class="active" style="display:block;color:#c8e6c9;padding:10px 18px;font-size:14px;text-decoration:none;border-left:3px solid var(--aps-gold);"><i class="bi bi-grid-1x2" style="width:20px;margin-right:8px;"></i>Dashboard</a>
+  <a href="{% url 'attendance:daily_mark' %}" style="display:block;color:#c8e6c9;padding:10px 18px;font-size:14px;text-decoration:none;border-left:3px solid transparent;"><i class="bi bi-check2-square" style="width:20px;margin-right:8px;"></i>Attendance</a>
+  <a href="{% url 'diary:entry_list' %}" style="display:block;color:#c8e6c9;padding:10px 18px;font-size:14px;text-decoration:none;border-left:3px solid transparent;"><i class="bi bi-journal-text" style="width:20px;margin-right:8px;"></i>Diary</a>
+  <a href="{% url 'homework:homework_list' %}" style="display:block;color:#c8e6c9;padding:10px 18px;font-size:14px;text-decoration:none;border-left:3px solid transparent;"><i class="bi bi-pencil-square" style="width:20px;margin-right:8px;"></i>Homework</a>
+  <a href="{% url 'syllabus:syllabus_list' %}" style="display:block;color:#c8e6c9;padding:10px 18px;font-size:14px;text-decoration:none;border-left:3px solid transparent;"><i class="bi bi-list-task" style="width:20px;margin-right:8px;"></i>Syllabus</a>
+  <a href="{% url 'examinations:classtest_list' %}" style="display:block;color:#c8e6c9;padding:10px 18px;font-size:14px;text-decoration:none;border-left:3px solid transparent;"><i class="bi bi-journal-medical" style="width:20px;margin-right:8px;"></i>Tests</a>
+  {% if perms.payroll.view_payroll %}
+  <div class="sidebar-heading" style="color:rgba(212,175,55,.5);font-size:10px;text-transform:uppercase;letter-spacing:1px;padding:12px 18px 6px;font-weight:700;">Employment</div>
+  <a href="{% url 'payroll:payroll_list' %}?q={{ teacher.employee_id|default:'' }}" style="display:block;color:#c8e6c9;padding:10px 18px;font-size:14px;text-decoration:none;border-left:3px solid transparent;"><i class="bi bi-cash-coin" style="width:20px;margin-right:8px;"></i>My Salary</a>
+  {% endif %}
+  <div class="sidebar-heading" style="color:rgba(212,175,55,.5);font-size:10px;text-transform:uppercase;letter-spacing:1px;padding:12px 18px 6px;font-weight:700;">Engagement</div>
+  <a href="{% url 'announcements:list' %}" style="display:block;color:#c8e6c9;padding:10px 18px;font-size:14px;text-decoration:none;border-left:3px solid transparent;"><i class="bi bi-megaphone" style="width:20px;margin-right:8px;"></i>Notices</a>
+  <a href="{% url 'notifications:list' %}" style="display:block;color:#c8e6c9;padding:10px 18px;font-size:14px;text-decoration:none;border-left:3px solid transparent;"><i class="bi bi-bell" style="width:20px;margin-right:8px;"></i>Notifications</a>
+  <div class="sidebar-heading" style="color:rgba(212,175,55,.5);font-size:10px;text-transform:uppercase;letter-spacing:1px;padding:12px 18px 6px;font-weight:700;">Account</div>
+  <a href="{% url 'password_change' %}" style="display:block;color:#c8e6c9;padding:10px 18px;font-size:14px;text-decoration:none;border-left:3px solid transparent;"><i class="bi bi-key" style="width:20px;margin-right:8px;"></i>Change Password</a>
+  <a href="{% url 'logout' %}" style="display:block;color:#c8e6c9;padding:10px 18px;font-size:14px;text-decoration:none;border-left:3px solid transparent;"><i class="bi bi-box-arrow-right" style="width:20px;margin-right:8px;"></i>Logout</a>
+  <button class="btn btn-sm d-md-none position-absolute top-0 end-0 mt-2 me-2 text-light" id="sidebarCloseBtn"><i class="bi bi-x-lg"></i></button>
+</aside>
+{% endblock %}
+
 {% block content %}
 <style>
   .portal-sidebar { background: var(--aps-green-dark); min-height: calc(100vh - 60px); padding: 1rem 0; }
