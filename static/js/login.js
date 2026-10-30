@@ -20,16 +20,17 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Auto-set portal tab active based on ?next= param
-    var params = new URLSearchParams(window.location.search);
     var next = params.get('next') || '';
-    if (next.indexOf('/portal/student') !== -1) {
-        var studentTab = document.querySelector('[data-portal="student"]');
-        if (studentTab) studentTab.classList.add('active');
-    } else if (next.indexOf('/portal/parent') !== -1) {
-        var parentTab = document.querySelector('[data-portal="parent"]');
-        if (parentTab) parentTab.classList.add('active');
-    } else if (next.indexOf('/portal/teacher') !== -1) {
-        var teacherTab = document.querySelector('[data-portal="teacher"]');
-        if (teacherTab) teacherTab.classList.add('active');
+    var tabs = document.querySelectorAll('.aps-portal-tab');
+    if (tabs.length && next) {
+        // Remove active from ALL tabs first (the default "student" tab
+        // has active in the HTML; without removing it, two tabs light up).
+        tabs.forEach(function(t) { t.classList.remove('active'); });
+        tabs.forEach(function(t) {
+            var portal = t.getAttribute('data-portal');
+            if (portal && next.indexOf(portal) !== -1) {
+                t.classList.add('active');
+            }
+        });
     }
 });
