@@ -2,7 +2,6 @@
 {% load humanize static %}
 
 {% block title %}Dashboard · {{ school_name }}{% endblock %}
-
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
@@ -55,10 +54,10 @@
         <div class="stat-card">
             <div class="d-flex justify-content-between">
                 <div class="stat-icon bg-soft-warning"><i class="bi bi-credit-card"></i></div>
-                <span class="stat-trend text-muted-2">{% if can_view_finance %}Today{% else %}Restricted{% endif %}</span>
+                <span class="stat-trend text-muted-2">payments today</span>
             </div>
             <div class="stat-label mt-2">Fee Payments Today</div>
-            <div class="stat-value">{% if can_view_finance %}{{ currency_symbol }}{{ fee_payments_today|intcomma }}{% else %}—{% endif %}</div>
+            <div class="stat-value">{% if can_view_finance %}{{ fee_payments_today|intcomma }}{% else %}—{% endif %}</div>
         </div>
     </div>
 </div>
@@ -72,7 +71,9 @@
                 <span class="text-muted-2 small">last 6 months</span>
             </div>
             <div class="card-body">
-                <canvas id="feeChart" data-enabled="true" data-labels="{{ collection_labels_json|escapejson }}" data-values="{{ collection_values_json|escapejson }}" height="120"></canvas>
+                <canvas id="feeChart" data-enabled="true" height="120"></canvas>
+                {{ collection_labels_json|json_script:"fee-chart-labels" }}
+                {{ collection_values_json|json_script:"fee-chart-values" }}
             </div>
         </div>
         {% else %}
@@ -91,7 +92,8 @@
         <div class="card h-100">
             <div class="card-header"><i class="bi bi-bar-chart me-2"></i>Enrollment by Class</div>
             <div class="card-body">
-                <canvas id="enrollChart" data-enrollment="{{ enrollment_data_json|escapejson }}" height="200"></canvas>
+                <canvas id="enrollChart" height="200"></canvas>
+                {{ enrollment_data_json|json_script:"enrollment-data" }}
             </div>
         </div>
     </div>
@@ -170,7 +172,7 @@
                     {% endfor %}
                 </ul>
                 {% else %}
-                <div class="empty-state p-3 text-center"><i class="bi bi-inbox fs-4 d-block text-muted"></i><p class="small text-muted mb-0">No recent payments.</p></div>
+                <div class="empty-state p-3"><i class="bi bi-inbox"></i><p class="small">No recent payments.</p></div>
                 {% endif %}
             </div>
         </div>
@@ -189,7 +191,7 @@
                     {% endfor %}
                 </ul>
                 {% else %}
-                <div class="empty-state p-3 text-center"><i class="bi bi-inbox fs-4 d-block text-muted"></i><p class="small text-muted mb-0">No announcements.</p></div>
+                <div class="empty-state p-3"><i class="bi bi-inbox"></i></div>
                 {% endif %}
             </div>
         </div>
