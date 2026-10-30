@@ -22,8 +22,10 @@
       <a href="{% url 'homework:homework_list' %}"><i class="bi bi-pencil-square"></i>Homework</a>
       <a href="{% url 'syllabus:syllabus_list' %}"><i class="bi bi-list-task"></i>Syllabus</a>
       <a href="{% url 'examinations:classtest_list' %}"><i class="bi bi-journal-medical"></i>Tests</a>
+      {% if perms.payroll.view_payroll %}
       <div class="sidebar-heading">Employment</div>
       <a href="{% url 'payroll:payroll_list' %}?q={{ teacher.employee_id|default:'' }}"><i class="bi bi-cash-coin"></i>My Salary</a>
+      {% endif %}
       <a href="{% url 'announcements:list' %}"><i class="bi bi-megaphone"></i>Notices</a>
       <a href="{% url 'notifications:list' %}"><i class="bi bi-bell"></i>Notifications</a>
       <div class="sidebar-heading">Account</div>
@@ -45,7 +47,9 @@
         </div>
         <div>
           <a href="{% url 'attendance:daily_mark' %}" class="btn btn-success btn-sm" style="background:var(--aps-green);border-color:var(--aps-green);"><i class="bi bi-check2-square me-1"></i>Mark Attendance</a>
+          {% if perms.payroll.view_payroll %}
           <a href="{% url 'payroll:payroll_list' %}?q={{ teacher.employee_id|default:'' }}" class="btn btn-outline-success btn-sm"><i class="bi bi-cash-coin me-1"></i>My Salary</a>
+          {% endif %}
         </div>
       </div>
 
@@ -89,7 +93,7 @@
         <div class="col-6 col-md-3"><a href="{% url 'homework:homework_list' %}" class="btn btn-outline-success w-100"><i class="bi bi-pencil-square me-1"></i>Homework</a></div>
         <div class="col-6 col-md-3"><a href="{% url 'examinations:classtest_list' %}" class="btn btn-outline-success w-100"><i class="bi bi-journal-medical me-1"></i>Tests</a></div>
         <div class="col-6 col-md-3"><a href="{% url 'syllabus:syllabus_list' %}" class="btn btn-outline-success w-100"><i class="bi bi-list-task me-1"></i>Syllabus</a></div>
-        <div class="col-6 col-md-3"><a href="{% url 'payroll:payroll_list' %}?q={{ teacher.employee_id|default:'' }}" class="btn btn-outline-success w-100"><i class="bi bi-cash-coin me-1"></i>My Salary</a></div>
+        <div class="col-6 col-md-3">{% if perms.payroll.view_payroll %}<a href="{% url 'payroll:payroll_list' %}?q={{ teacher.employee_id|default:'' }}" class="btn btn-outline-success w-100"><i class="bi bi-cash-coin me-1"></i>My Salary</a>{% endif %}</div>
         <div class="col-6 col-md-3"><a href="{% url 'announcements:list' %}" class="btn btn-outline-success w-100"><i class="bi bi-megaphone me-1"></i>Notices</a></div>
         <div class="col-6 col-md-3"><a href="{% url 'notifications:list' %}" class="btn btn-outline-success w-100"><i class="bi bi-bell me-1"></i>Alerts</a></div>
       </div>
@@ -130,6 +134,7 @@
       </div>
 
       <!-- My Salary section -->
+      {% if perms.payroll.view_payroll %}
       <h5 class="mb-3 mt-4" style="color:var(--aps-green);"><i class="bi bi-cash-coin me-2"></i>My Salary</h5>
       <div class="card mb-4">
         <div class="card-body p-0">
@@ -170,6 +175,7 @@
           {% endif %}
         </div>
       </div>
+      {% endif %}
 
       {% else %}
       <div class="alert alert-warning">
@@ -186,7 +192,7 @@
   <a href="{% url 'portal:teacher_home' %}"><i class="bi bi-house"></i>Home</a>
   <a href="{% url 'attendance:daily_mark' %}"><i class="bi bi-check2-square"></i>Attendance</a>
   <a href="{% url 'homework:homework_list' %}"><i class="bi bi-pencil-square"></i>Homework</a>
-  <a href="{% url 'payroll:payroll_list' %}?q={{ teacher.employee_id|default:'' }}"><i class="bi bi-cash-coin"></i>Salary</a>
+  <a href="{% url 'payroll:payroll_list' %}?q={{ teacher.employee_id|default:'' }}">{% if perms.payroll.view_payroll %}<i class="bi bi-cash-coin"></i>Salary{% endif %}</a>
   <a href="{% url 'notifications:list' %}"><i class="bi bi-bell"></i>Alerts</a>
 </div>
 {% endblock %}
