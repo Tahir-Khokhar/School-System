@@ -1,28 +1,215 @@
-{% extends "base.html" %}
-{% load static %}
-{% block content %}
-<h1 class="h3 fw-bold mb-3">{{ document.name }}</h1>
 
-<div class="card mb-3">
-    <div class="card-header">Document Details</div>
-    <div class="card-body p-0">
-        <table class="table mb-0">
-            <tr><th class="w-25">Student</th><td>{{ document.student.full_name }} ({{ document.student.registration_no }})</td></tr>
-            <tr><th>Document name</th><td>{{ document.name }}</td></tr>
-            <tr><th>File</th><td>{{ document.file.name|cut:"student_documents/" }}</td></tr>
-            <tr><th>Uploaded by</th><td>{{ document.uploaded_by|default:"—" }}</td></tr>
-            <tr><th>Created at</th><td>{{ document.created_at|date:"M d, Y H:i" }}</td></tr>
-            {% if document.description %}<tr><th>Description</th><td>{{ document.description }}</td></tr>{% endif %}
-        </table>
+{% extends "base.html" %}
+
+{% block title %}{{ document.name }} · Documents{% endblock %}
+
+{% block content %}
+
+<!-- Page Header -->
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+
+    <div>
+        <h1 class="h3 fw-bold mb-1">
+            {{ document.name }}
+        </h1>
+
+        <p class="text-muted-2 small mb-0">
+            <i class="bi bi-file-earmark-text me-1"></i>
+            Document details and information
+        </p>
     </div>
+
+    <a href="{% url 'documents:list' %}"
+       class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i>
+        Back to Documents
+    </a>
+
 </div>
 
-<a href="{% url 'documents:download' document.pk %}" class="btn btn-success"><i class="bi bi-download"></i> Download</a>
-<a href="{% url 'documents:list' %}" class="btn btn-outline-secondary">Back to list</a>
-{% if perms.documents.delete_studentdocument %}
-<form method="post" action="{% url 'documents:delete' document.pk %}" class="d-inline" data-confirm="Delete this document? This cannot be undone.">
-    {% csrf_token %}
-    <button class="btn btn-danger"><i class="bi bi-trash"></i> Delete</button>
-</form>
-{% endif %}
+
+<!-- Document Information -->
+<div class="card mb-4">
+
+    <div class="card-header">
+        <i class="bi bi-info-circle me-2"></i>
+        Document Details
+    </div>
+
+    <div class="card-body p-0">
+
+        <div class="table-responsive">
+
+            <table class="table table-hover align-middle mb-0">
+
+                <tbody>
+
+                    <!-- Student -->
+                    <tr>
+                        <th scope="row" class="w-25">
+                            <i class="bi bi-person me-2 text-muted"></i>
+                            Student
+                        </th>
+
+                        <td>
+                            <div class="fw-semibold">
+                                {{ document.student.full_name }}
+                            </div>
+
+                            <small class="text-muted-2">
+                                Registration No:
+                                {{ document.student.registration_no }}
+                            </small>
+                        </td>
+                    </tr>
+
+                    <!-- Document Name -->
+                    <tr>
+                        <th scope="row">
+                            <i class="bi bi-file-earmark me-2 text-muted"></i>
+                            Document Name
+                        </th>
+
+                        <td>
+                            {{ document.name }}
+                        </td>
+                    </tr>
+
+                    <!-- Uploaded File -->
+                    <tr>
+                        <th scope="row">
+                            <i class="bi bi-paperclip me-2 text-muted"></i>
+                            Uploaded File
+                        </th>
+
+                        <td>
+                            {% if document.file %}
+                                <span class="text-break">
+                                    {{ document.file.name|cut:"student_documents/" }}
+                                </span>
+                            {% else %}
+                                <span class="text-muted-2">
+                                    No file available
+                                </span>
+                            {% endif %}
+                        </td>
+                    </tr>
+
+                    <!-- Uploaded By -->
+                    <tr>
+                        <th scope="row">
+                            <i class="bi bi-person-badge me-2 text-muted"></i>
+                            Uploaded By
+                        </th>
+
+                        <td>
+                            {{ document.uploaded_by|default:"—" }}
+                        </td>
+                    </tr>
+
+                    <!-- Created At -->
+                    <tr>
+                        <th scope="row">
+                            <i class="bi bi-calendar3 me-2 text-muted"></i>
+                            Created At
+                        </th>
+
+                        <td>
+                            {{ document.created_at|date:"M d, Y H:i" }}
+                        </td>
+                    </tr>
+
+                    <!-- Description -->
+                    {% if document.description %}
+
+                        <tr>
+                            <th scope="row">
+                                <i class="bi bi-card-text me-2 text-muted"></i>
+                                Description
+                            </th>
+
+                            <td>
+                                <div class="text-break">
+                                    {{ document.description|linebreaksbr }}
+                                </div>
+                            </td>
+                        </tr>
+
+                    {% endif %}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- Document Actions -->
+<div class="card">
+
+    <div class="card-header">
+        <i class="bi bi-gear me-2"></i>
+        Document Actions
+    </div>
+
+    <div class="card-body">
+
+        <div class="d-flex flex-wrap gap-2">
+
+            <!-- Download Document -->
+            {% if document.file %}
+
+                <a
+                    href="{% url 'documents:download' document.pk %}"
+                    class="btn btn-success"
+                >
+                    <i class="bi bi-download me-1"></i>
+                    Download Document
+                </a>
+
+            {% endif %}
+
+            <!-- Back to Documents -->
+            <a
+                href="{% url 'documents:list' %}"
+                class="btn btn-outline-secondary"
+            >
+                <i class="bi bi-arrow-left me-1"></i>
+                Back to List
+            </a>
+
+            <!-- Delete Document -->
+            {% if perms.documents.delete_studentdocument %}
+
+                <form
+                    method="post"
+                    action="{% url 'documents:delete' document.pk %}"
+                    class="d-inline"
+                    data-confirm="Are you sure you want to delete this document? This action cannot be undone."
+                >
+
+                    {% csrf_token %}
+
+                    <button
+                        type="submit"
+                        class="btn btn-danger"
+                    >
+                        <i class="bi bi-trash me-1"></i>
+                        Delete Document
+                    </button>
+
+                </form>
+
+            {% endif %}
+
+        </div>
+
+    </div>
+
+</div>
+
 {% endblock %}
