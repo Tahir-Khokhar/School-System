@@ -1,264 +1,441 @@
 
-"""Premium admin dashboard — daily operations control center."""
+"""
+Document Center — secure upload, listing, detail, download, and deletion.
 
-from collections import defaultdict
-from datetime import timedelta
-from decimal import Decimal
+Permissions:
+    - Staff with documents.add_studentdocument can upload.
+    - Staff with documents.view_studentdocument can list and view.
+    - Staff with documents.delete_studentdocument can delete.
+    - Students access only their own documents through portal views.
+    - Parents access only their linked children's documents through portal views.
 
-from django.contrib.auth.mixins import LoginRequiredMixin
-from django.core.exceptions import PermissionDenied
-from django.db.models import Count, Q
-from django.shortcuts import redirect
-from django.utils import timezone
-from django.views.generic import TemplateView
+Security:
+    - All staff views require authentication and staff authorization.
+    - Model permissions are checked independently.
+    - Downloads are served through Django, not direct media URLs.
+    - Document downloads and deletions are audited.
+"""
 
+import logging
+import os
+
+from django.contrib import messages
+from django.contrib.auth.mixins import PermissionRequiredMixin
+from django.db import transaction
+from django.db.models import Q
+from django.http import FileResponse, Http404
+from django.shortcuts import get_object_or_404, redirect
+from django.urls import reverse
+from django.views.generic import CreateView, DetailView, ListView, View
+
+from apps.accounts.mixins import StaffRequiredMixin
 from apps.students.models import Student
-from apps.teachers.models import Teacher
-from apps.fees.models import FeeChallan, FeePayment
-from apps.attendance.models import Attendance
-from apps.homework.models import Homework
-from apps.examinations.models import ClassTest, TermResult
-from apps.activities.models import Activity
-from apps.announcements.models import Announcement
-from apps.common.models import AcademicYear, SchoolClass
+
+from .forms import StudentDocumentForm
+from .models import StudentDocument
 
 
-class DashboardHomeView(LoginRequiredMixin, TemplateView):
+logger = logging.getLogger(__name__)
+
+
+# ==========================================================
+# DOCUMENT LIST
+# ==========================================================
+
+class StudentDocumentListView(
+    StaffRequiredMixin,
+    PermissionRequiredMixin,
+    ListView,
+):
     """
-    Role-aware dashboard.
+    Display student documents.
 
-    Superusers and authorized admin staff access the staff dashboard.
-    Students, parents, and teachers are redirected to their respective portals.
-    Unauthorized authenticated users receive HTTP 403.
+    Only authorized staff with view permission can access
+    the complete document listing.
     """
 
-    template_name = "dashboard/home.html"
-    login_url = "login"
+    model = StudentDocument
+    template_name = "documents/list.html"
+    context_object_name = "documents"
+    paginate_by = 25
 
-    def dispatch(self, request, *args, **kwargs):
-        # Let LoginRequiredMixin handle anonymous users.
-        if not request.user.is_authenticated:
-            return super().dispatch(request, *args, **kwargs)
+    permission_required = "documents.view_studentdocument"
 
-        user = request.user
+    def get_queryset(self):
+        """Retrieve documents and efficiently load related records."""
 
-        # Superusers must be checked before their assigned role.
-        if user.is_superuser:
-            return super().dispatch(request, *args, **kwargs)
-
-        # Redirect users to their respective portals.
-        portal_redirects = {
-            "student": "portal:student_home",
-            "parent": "portal:parent_home",
-            "teacher": "portal:teacher_home",
-        }
-
-        portal_url = portal_redirects.get(user.role)
-
-        if portal_url:
-            return redirect(portal_url)
-
-        # Only authorized staff can access the admin dashboard.
-        if not user.is_admin_staff:
-            raise PermissionDenied(
-                "You do not have permission to access the admin dashboard."
-            )
-
-        return super().dispatch(request, *args, **kwargs)
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-
-        # Get the currently authenticated user.
-        user = self.request.user
-
-        # Use the configured Django timezone for the current school date.
-        today = timezone.localdate()
-
-        active_year = AcademicYear.objects.get_active()
-
-        # --------------------------------------------------
-        # GENERAL DASHBOARD STATISTICS
-        # --------------------------------------------------
-
-        ctx["total_students"] = Student.objects.filter(
-            status=Student.Status.ACTIVE
-        ).count()
-
-        ctx["total_teachers"] = Teacher.objects.filter(
-            status=Teacher.Status.ACTIVE
-        ).count()
-
-        ctx["total_classes"] = SchoolClass.objects.filter(
-            is_active=True
-        ).count()
-
-        ctx["active_academic_year"] = active_year
-
-        # --------------------------------------------------
-        # ATTENDANCE STATISTICS
-        # --------------------------------------------------
-
-        ctx["students_present_today"] = Attendance.objects.filter(
-            date=today,
-            status=Attendance.Status.PRESENT,
-        ).count()
-
-        ctx["students_absent_today"] = Attendance.objects.filter(
-            date=today,
-            status=Attendance.Status.ABSENT,
-        ).count()
-
-        # --------------------------------------------------
-        # ACADEMIC STATISTICS
-        # --------------------------------------------------
-
-        ctx["tests_today"] = ClassTest.objects.filter(
-            date=today
-        ).count()
-
-        ctx["homework_today"] = Homework.objects.filter(
-            assigned_date=today
-        ).count()
-
-        ctx["pending_results"] = TermResult.objects.exclude(
-            status=TermResult.Status.PUBLISHED
-        ).count()
-
-        ctx["upcoming_homework"] = Homework.objects.filter(
-            due_date__gte=today,
-            status=Homework.Status.ASSIGNED,
-        ).count()
-
-        # --------------------------------------------------
-        # FINANCIAL PERMISSIONS
-        # --------------------------------------------------
-
-        can_view_finance = (
-            user.is_superuser
-            or user.has_perm("fees.view_feepayment")
+        queryset = StudentDocument.objects.select_related(
+            "student",
+            "uploaded_by",
         )
 
-        ctx["can_view_finance"] = can_view_finance
+        # Search by student name or registration number.
+        search_query = self.request.GET.get("q", "").strip()
 
-        if can_view_finance:
-
-            ctx["fee_payments_today"] = FeePayment.objects.filter(
-                payment_date=today,
-                is_successful=True,
-            ).count()
-
-            ctx["fee_defaulters"] = FeeChallan.objects.filter(
-                status__in=[
-                    FeeChallan.Status.UNPAID,
-                    FeeChallan.Status.OVERDUE,
-                    FeeChallan.Status.PARTIAL,
-                ]
-            ).count()
-
-            ctx["recent_payments"] = FeePayment.objects.select_related(
-                "challan",
-                "challan__student",
-            ).order_by("-payment_date")[:5]
-
-            # --------------------------------------------------
-            # MONTHLY FEE COLLECTION CHART
-            # --------------------------------------------------
-
-            collection_data = defaultdict(Decimal)
-
-            six_months_ago = today - timedelta(days=180)
-
-            payments = FeePayment.objects.filter(
-                is_successful=True,
-                payment_date__gte=six_months_ago,
-                payment_date__lte=today,
-            ).order_by("payment_date").values(
-                "payment_date",
-                "amount",
+        if search_query:
+            queryset = queryset.filter(
+                Q(student__full_name__icontains=search_query)
+                | Q(student__registration_no__icontains=search_query)
             )
 
-            for payment in payments:
-                month_label = payment["payment_date"].strftime("%b %y")
-                amount = payment["amount"] or Decimal("0")
+        return queryset.order_by("-created_at").distinct()
 
-                collection_data[month_label] += amount
+    def get_context_data(self, **kwargs):
+        """Add breadcrumb information to the template."""
 
-            # Pass Python lists directly for json_script.
-            ctx["collection_labels"] = list(
-                collection_data.keys()
-            )
+        context = super().get_context_data(**kwargs)
 
-            ctx["collection_values"] = [
-                float(value)
-                for value in collection_data.values()
-            ]
-
-        else:
-
-            # Do not expose financial information to unauthorized staff.
-            ctx["fee_payments_today"] = 0
-            ctx["fee_defaulters"] = 0
-            ctx["recent_payments"] = FeePayment.objects.none()
-
-            ctx["collection_labels"] = []
-            ctx["collection_values"] = []
-
-        # --------------------------------------------------
-        # STUDENT ENROLLMENT CHART
-        # --------------------------------------------------
-
-        enrollment_data = [
-            {
-                "name": school_class.name,
-                "count": school_class.student_count,
-            }
-            for school_class in SchoolClass.objects.filter(
-                is_active=True
-            ).annotate(
-                student_count=Count(
-                    "students",
-                    filter=Q(
-                        students__status=Student.Status.ACTIVE
-                    ),
-                )
-            ).order_by("order")
+        context["breadcrumbs"] = [
+            {"title": "Documents"},
         ]
 
-        # Keep this as a Python list, not json.dumps().
-        ctx["enrollment_data"] = enrollment_data
+        return context
 
-        # --------------------------------------------------
-        # RECENT SCHOOL ACTIVITIES
-        # --------------------------------------------------
 
-        ctx["recent_activities"] = Activity.objects.select_related(
-            "academic_year"
-        ).order_by("-date")[:5]
+# ==========================================================
+# DOCUMENT CREATE / UPLOAD
+# ==========================================================
 
-        # --------------------------------------------------
-        # RECENT ANNOUNCEMENTS
-        # --------------------------------------------------
+class StudentDocumentCreateView(
+    StaffRequiredMixin,
+    PermissionRequiredMixin,
+    CreateView,
+):
+    """
+    Upload a document for a student.
 
-        ctx["recent_announcements"] = Announcement.objects.filter(
-            is_published=True
-        ).select_related(
-            "author"
-        ).order_by("-publish_date")[:5]
+    Supports:
+        - ?student=<student_pk>
+        - URL containing student_pk
 
-        # --------------------------------------------------
-        # UPCOMING EXAMINATIONS
-        # --------------------------------------------------
+    The selected student is verified server-side.
+    """
 
-        if active_year:
-            ctx["upcoming_exams"] = ClassTest.objects.filter(
-                date__gte=today
-            ).select_related(
-                "school_class",
-                "subject",
-            ).order_by("date")[:5]
+    model = StudentDocument
+    form_class = StudentDocumentForm
+    template_name = "documents/form.html"
+
+    permission_required = "documents.add_studentdocument"
+
+    def get_preselected_student(self):
+        """Retrieve and cache the student selected in the URL."""
+
+        if not hasattr(self, "_preselected_student"):
+
+            student_id = (
+                self.request.GET.get("student")
+                or self.kwargs.get("student_pk")
+            )
+
+            self._preselected_student = (
+                get_object_or_404(Student, pk=student_id)
+                if student_id
+                else None
+            )
+
+        return self._preselected_student
+
+    def get_initial(self):
+        """Preselect the student in the upload form when provided."""
+
+        initial = super().get_initial()
+
+        student = self.get_preselected_student()
+
+        if student:
+            initial["student"] = student
+
+        return initial
+
+    def get_context_data(self, **kwargs):
+        """Add breadcrumbs and selected student to the template."""
+
+        context = super().get_context_data(**kwargs)
+
+        context["breadcrumbs"] = [
+            {
+                "title": "Documents",
+                "url": reverse("documents:list"),
+            },
+            {"title": "New"},
+        ]
+
+        context["student"] = self.get_preselected_student()
+
+        return context
+
+    def form_valid(self, form):
+        """Validate ownership fields and save the uploaded document."""
+
+        selected_student = self.get_preselected_student()
+
+        student = (
+            selected_student
+            or form.cleaned_data.get("student")
+        )
+
+        if not student:
+            messages.error(
+                self.request,
+                "You must select a student for this document.",
+            )
+            return self.form_invalid(form)
+
+        # Always assign the verified student.
+        form.instance.student = student
+
+        # Record the authenticated uploader.
+        form.instance.uploaded_by = self.request.user
+
+        response = super().form_valid(form)
+
+        messages.success(
+            self.request,
+            f"Document '{self.object.name}' uploaded successfully "
+            f"for {student.full_name}.",
+        )
+
+        return response
+
+    def get_success_url(self):
+        """Redirect to the uploaded document's detail page."""
+
+        return reverse(
+            "documents:detail",
+            args=[self.object.pk],
+        )
+
+
+# ==========================================================
+# DOCUMENT DETAIL
+# ==========================================================
+
+class StudentDocumentDetailView(
+    StaffRequiredMixin,
+    PermissionRequiredMixin,
+    DetailView,
+):
+    """
+    Display document metadata.
+
+    The actual file content is served separately through
+    StudentDocumentDownloadView.
+    """
+
+    model = StudentDocument
+    template_name = "documents/detail.html"
+    context_object_name = "document"
+
+    permission_required = "documents.view_studentdocument"
+
+    def get_queryset(self):
+        """Load related student and uploader information efficiently."""
+
+        return super().get_queryset().select_related(
+            "student",
+            "uploaded_by",
+        )
+
+    def get_context_data(self, **kwargs):
+        """Add document breadcrumbs."""
+
+        context = super().get_context_data(**kwargs)
+
+        context["breadcrumbs"] = [
+            {
+                "title": "Documents",
+                "url": reverse("documents:list"),
+            },
+            {
+                "title": self.object.name,
+            },
+        ]
+
+        return context
+
+
+# ==========================================================
+# DOCUMENT DOWNLOAD
+# ==========================================================
+
+class StudentDocumentDownloadView(
+    StaffRequiredMixin,
+    PermissionRequiredMixin,
+    View,
+):
+    """
+    Securely download student documents.
+
+    File access passes through Django authentication and
+    permission checks.
+
+    Production deployment should prevent direct public
+    access to the underlying media storage.
+    """
+
+    permission_required = "documents.view_studentdocument"
+
+    def get(self, request, *args, **kwargs):
+        """Open and securely stream the requested document."""
+
+        document = get_object_or_404(
+            StudentDocument.objects.select_related("student"),
+            pk=kwargs["pk"],
+        )
+
+        # Verify that a file is associated with the document.
+        if not document.file or not document.file.name:
+            raise Http404("Document file is missing.")
+
+        # Generate a safe download filename.
+        original_name = os.path.basename(
+            document.file.name.replace("\\", "/")
+        )
+
+        if not original_name:
+            raise Http404("Invalid document filename.")
+
+        # Open the file through Django's storage backend.
+        try:
+            document.file.open("rb")
+            file_handle = document.file.file
+
+        except (OSError, ValueError) as error:
+            raise Http404(
+                "Document file could not be opened."
+            ) from error
+
+        # Audit the successful file access.
+        try:
+            from apps.audit_logs.models import AuditLogService
+
+            AuditLogService.log(
+                user=request.user,
+                action="download",
+                obj=document,
+                description=(
+                    f"Downloaded student document "
+                    f"'{document.name}' (document ID: {document.pk})."
+                ),
+            )
+
+        except Exception:
+            # Close the opened file if audit logging fails.
+            file_handle.close()
+            raise
+
+        # Use FileResponse to safely construct Content-Disposition.
+        response = FileResponse(
+            file_handle,
+            as_attachment=True,
+            filename=original_name,
+            content_type="application/octet-stream",
+        )
+
+        # Security headers for downloaded documents.
+        response["X-Content-Type-Options"] = "nosniff"
+        response["Cache-Control"] = "private, no-store"
+
+        return response
+
+
+# ==========================================================
+# DOCUMENT DELETE
+# ==========================================================
+
+class StudentDocumentDeleteView(
+    StaffRequiredMixin,
+    PermissionRequiredMixin,
+    View,
+):
+    """
+    Delete a student document.
+
+    Deletion is POST-only.
+
+    The audit record and database deletion are performed
+    within a database transaction. The stored file is
+    removed after the database transaction commits.
+    """
+
+    permission_required = "documents.delete_studentdocument"
+
+    def post(self, request, *args, **kwargs):
+        """Delete the document and record the action."""
+
+        document = get_object_or_404(
+            StudentDocument.objects.select_related("student"),
+            pk=kwargs["pk"],
+        )
+
+        document_name = document.name
+        document_id = document.pk
+        student_name = document.student.full_name
+
+        # Retain the storage reference before deleting the DB record.
+        file_name = (
+            document.file.name
+            if document.file
+            else None
+        )
+
+        storage = (
+            document.file.storage
+            if file_name
+            else None
+        )
+
+        # Import locally to avoid unnecessary module-level coupling.
+        from apps.audit_logs.models import AuditLogService
+
+        # Record the audit event and delete the database record
+        # atomically. Preserve the document reference in the audit log.
+        with transaction.atomic():
+
+            AuditLogService.log(
+                user=request.user,
+                action="delete",
+                obj=document,
+                description=(
+                    f"Deleted document '{document_name}' "
+                    f"(document ID: {document_id}) "
+                    f"for student {student_name}."
+                ),
+            )
+
+            document.delete()
+
+        # Delete the physical file after the database transaction.
+        # If storage deletion fails, retain an administrator warning.
+        if file_name and storage:
+
+            try:
+                storage.delete(file_name)
+
+            except Exception:
+                logger.exception(
+                    "Failed to delete stored document file. "
+                    "Document ID: %s",
+                    document_id,
+                )
+
+                messages.warning(
+                    request,
+                    "The document record was deleted, but its stored "
+                    "file could not be removed. Please contact the "
+                    "system administrator for storage cleanup.",
+                )
+
+            else:
+                messages.success(
+                    request,
+                    f"Document '{document_name}' deleted successfully.",
+                )
 
         else:
-            ctx["upcoming_exams"] = ClassTest.objects.none()
+            messages.success(
+                request,
+                f"Document '{document_name}' deleted successfully.",
+            )
 
-        return ctx
+        return redirect("documents:list")
