@@ -1,159 +1,255 @@
 {% extends "base.html" %}
 {% load humanize static %}
-{% block title %}Parent Dashboard · {{ school_name }}{% endblock %}
+
+{% block title %}Parent Dashboard · {{ school_name|default:"School ERP" }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/parent-dashboard.css' %}">
+{% endblock %}
 
 {% block sidebar %}
-<aside class="portal-sidebar" id="sidebar" style="background:var(--aps-green-dark);min-height:calc(100vh - 60px);padding:1rem 0;position:fixed;left:0;top:60px;width:220px;overflow-y:auto;z-index:1000;">
-  <div class="sidebar-heading" style="color:rgba(212,175,55,.5);font-size:10px;text-transform:uppercase;letter-spacing:1px;padding:12px 18px 6px;font-weight:700;">Parent Portal</div>
-  {% include "portal/parent/sidebar.html" %}
+<aside class="portal-sidebar" id="parentPortalSidebar" aria-label="Parent navigation">
+    <div class="sidebar-heading">Parent Portal</div>
+    {% include "portal/parent/sidebar.html" %}
+
+    <button
+        type="button"
+        class="btn btn-sm btn-outline-light d-md-none position-absolute top-0 end-0 mt-2 me-2"
+        id="parentSidebarClose"
+        aria-label="Close parent navigation"
+    >
+        <i class="bi bi-x-lg" aria-hidden="true"></i>
+    </button>
 </aside>
 {% endblock %}
 
 {% block content %}
-<style>
-  .portal-sidebar { background: var(--aps-green-dark); min-height: calc(100vh - 60px); padding: 1rem 0; }
-  .portal-sidebar a { display: block; color: #c8e6c9; padding: 10px 18px; font-size: 14px; text-decoration: none; border-left: 3px solid transparent; transition: all .15s ease; }
-  .portal-sidebar a:hover, .portal-sidebar a.active { background: rgba(212,175,55,.12); color: var(--aps-gold); border-left-color: var(--aps-gold); }
-  .portal-sidebar a i { width: 20px; margin-right: 8px; }
-  .portal-sidebar .sidebar-heading { color: rgba(212,175,55,.5); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; padding: 12px 18px 6px; font-weight: 700; }
-</style>
+<div class="container-fluid px-0">
+    <button
+        type="button"
+        class="btn btn-outline-success btn-sm d-md-none mb-3"
+        id="parentSidebarToggle"
+        aria-controls="parentPortalSidebar"
+        aria-expanded="false"
+    >
+        <i class="bi bi-list me-1" aria-hidden="true"></i>
+        Menu
+    </button>
 
-<div class="container-fluid">
-  <div class="row">
+    <button
+        type="button"
+        class="parent-sidebar-backdrop"
+        id="parentSidebarBackdrop"
+        aria-label="Close parent navigation"
+        tabindex="-1"
+    ></button>
 
-    <!-- Main content area -->
-    <div class="col-md-10 p-4">
-      {% if parent %}
-      <!-- Parent overview -->
-      <div class="d-flex justify-content-between align-items-center mb-4">
-        <div class="d-flex align-items-center gap-3">
-          <div class="avatar-sm" style="width:64px;height:64px;font-size:1.8rem;">{{ parent.full_name|slice:":1"|upper }}</div>
-          <div>
-            <h1 class="h3 fw-bold mb-0" style="color:var(--aps-green);">Welcome, {{ parent.full_name }}</h1>
-            <p class="text-muted-2 small mb-0">{{ parent.get_relation_display|default:"Parent" }} · Phone: {{ parent.phone|default:"—" }} · {{ children|length|default:0 }} children linked</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Quick stats -->
-      <div class="row g-3 mb-4">
-        <div class="col-6 col-md-3">
-          <div class="stat-card text-center">
-            <div class="stat-icon bg-soft-primary mx-auto"><i class="bi bi-people"></i></div>
-            <div class="stat-label mt-2">Children</div>
-            <div class="stat-value" style="color:var(--aps-green);">{{ children|length|default:0 }}</div>
-          </div>
-        </div>
-        <div class="col-6 col-md-3">
-          <div class="stat-card text-center">
-            <div class="stat-icon bg-soft-warning mx-auto"><i class="bi bi-credit-card"></i></div>
-            <div class="stat-label mt-2">Pending Fees</div>
-            <div class="stat-value text-warning" id="totalPendingFees">—</div>
-          </div>
-        </div>
-        <div class="col-6 col-md-3">
-          <div class="stat-card text-center">
-            <div class="stat-icon bg-soft-info mx-auto"><i class="bi bi-journal-medical"></i></div>
-            <div class="stat-label mt-2">Upcoming Exams</div>
-            <div class="stat-value" style="color:var(--aps-green);">—</div>
-          </div>
-        </div>
-        <div class="col-6 col-md-3">
-          <div class="stat-card text-center">
-            <div class="stat-icon bg-soft-danger mx-auto"><i class="bi bi-bell"></i></div>
-            <div class="stat-label mt-2">Notifications</div>
-            <div class="stat-value text-danger">{{ unread_notifications_count|default:0 }}</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- My Children cards -->
-      <h5 class="mb-3" style="color:var(--aps-green);"><i class="bi bi-people me-2"></i>My Children</h5>
-      <p class="text-muted-2 small mb-3">Click any child to view their academic + attendance + fees details</p>
-      <div class="row g-3">
-        {% if children %}
-          {% for c in children %}
-          <div class="col-md-6 col-lg-4">
-            <div class="card h-100" style="border-color:var(--aps-green-light);">
-              <div class="card-body">
-                <div class="d-flex align-items-center gap-3">
-                  <div class="avatar-sm" style="width:50px;height:50px;font-size:1.4rem;background:var(--aps-green);color:var(--aps-gold);">{{ c.full_name|slice:":1"|upper }}</div>
-                  <div>
-                    <h6 class="mb-0"><a href="{% url 'portal:parent_select_child' c.pk %}" style="color:var(--aps-green);text-decoration:none;">{{ c.full_name }}</a></h6>
-                    <small class="text-muted">{{ c.registration_no }} · {{ c.class_section_display }}</small>
-                  </div>
+    {% if parent %}
+        <!-- Parent overview -->
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+            <div class="d-flex align-items-center gap-3">
+                <div class="parent-avatar" aria-hidden="true">
+                    {{ parent.full_name|slice:":1"|upper }}
                 </div>
-                <hr class="my-3">
-                <div class="row text-center g-2">
-                  <div class="col-6">
-                    <div class="small text-muted">Attendance</div>
-                    <div class="fw-bold" style="color:var(--aps-green);">{{ c.attendance_percentage|default:"94"|floatformat:1 }}%</div>
-                  </div>
-                  <div class="col-6">
-                    <div class="small text-muted">Fee Status</div>
-                    <div class="fw-bold text-{% if c.fee_status == 'paid' %}success{% else %}danger{% endif %}">
-                      {% if c.fee_status == 'paid' %}Paid{% else %}Pending{% endif %}
+                <div>
+                    <h1 class="h3 fw-bold mb-0">
+                        Welcome, {{ parent.full_name }}
+                    </h1>
+                    <p class="text-muted small mb-0">
+                        {{ parent.get_relation_display|default:"Parent" }}
+                        · Phone: {{ parent.phone|default:"—" }}
+                        · {{ children|length }} linked child{{ children|length|pluralize }}
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Available dashboard statistics -->
+        <div class="row g-3 mb-4">
+            <div class="col-6 col-md-4">
+                <div class="stat-card text-center h-100">
+                    <div class="stat-icon bg-soft-primary mx-auto">
+                        <i class="bi bi-people" aria-hidden="true"></i>
                     </div>
-                  </div>
+                    <div class="stat-label mt-2">Linked Children</div>
+                    <div class="stat-value">{{ children|length|intcomma }}</div>
                 </div>
-              </div>
-              <div class="card-footer bg-transparent">
-                <a href="{% url 'portal:parent_select_child' c.pk %}" class="btn btn-sm btn-outline-success w-100"><i class="bi bi-eye me-1"></i>View Details</a>
-              </div>
             </div>
-          </div>
-          {% endfor %}
-        {% else %}
-          <div class="col-12">
-            <div class="empty-state">
-              <i class="bi bi-people"></i>
-              <p>No children linked to your account. Please contact the school administration.</p>
+            <div class="col-6 col-md-4">
+                <div class="stat-card text-center h-100">
+                    <div class="stat-icon bg-soft-danger mx-auto">
+                        <i class="bi bi-bell" aria-hidden="true"></i>
+                    </div>
+                    <div class="stat-label mt-2">Unread Notifications</div>
+                    <div class="stat-value text-danger">
+                        {{ unread_notifications_count|default:0|intcomma }}
+                    </div>
+                </div>
             </div>
-          </div>
-        {% endif %}
-      </div>
-
-      <!-- Notices + Events -->
-      <div class="row g-3 mt-4">
-        <div class="col-md-6">
-          <div class="card">
-            <div class="card-header"><i class="bi bi-megaphone me-2"></i>Recent Notices</div>
-            <div class="card-body p-0">
-              <ul class="list-group list-group-flush">
-                <li class="list-group-item"><strong>First Term Examinations</strong><br><small class="text-muted">10 Nov 2026 · Date sheet available on portal</small></li>
-                <li class="list-group-item"><strong>Parent-Teacher Meeting</strong><br><small class="text-muted">25 Jul 2026 · 9 AM to 12 PM</small></li>
-                <li class="list-group-item"><strong>Fee Submission Deadline</strong><br><small class="text-muted">30 Jul 2026 · Late fee Rs. 500 after due date</small></li>
-              </ul>
-              <div class="text-center p-2">
-                <a href="{% url 'announcements:list' %}" class="btn btn-sm btn-outline-success">View All Notices</a>
-              </div>
+            <div class="col-12 col-md-4">
+                <div class="stat-card text-center h-100">
+                    <div class="stat-icon bg-soft-success mx-auto">
+                        <i class="bi bi-calendar-event" aria-hidden="true"></i>
+                    </div>
+                    <div class="stat-label mt-2">School Calendar</div>
+                    <a href="{% url 'school_calendar:event_list' %}" class="btn btn-sm btn-outline-success mt-2">
+                        View Upcoming Events
+                    </a>
+                </div>
             </div>
-          </div>
         </div>
-        <div class="col-md-6">
-          <div class="card">
-            <div class="card-header"><i class="bi bi-calendar-event me-2"></i>Upcoming Events</div>
-            <div class="card-body p-0">
-              <ul class="list-group list-group-flush">
-                <li class="list-group-item"><strong>Independence Day</strong><br><small class="text-muted">14 Aug 2026 · 8:00 AM</small></li>
-                <li class="list-group-item"><strong>Annual Sports Day</strong><br><small class="text-muted">5 Nov 2026 · 9:00 AM</small></li>
-                <li class="list-group-item"><strong>Science Exhibition</strong><br><small class="text-muted">12 Sep 2026 · 10:00 AM</small></li>
-              </ul>
-              <div class="text-center p-2">
-                <a href="{% url 'school_calendar:event_list' %}" class="btn btn-sm btn-outline-success">View All Events</a>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      {% else %}
-      <div class="alert alert-warning">
-        <h5><i class="bi bi-exclamation-triangle me-2"></i>No parent profile linked</h5>
-        <p class="mb-0">Your user account is not linked to a Parent record. Please contact the school administration to link your account.</p>
-      </div>
-      {% endif %}
-    </div>
-  </div>
+        <!-- Children -->
+        <h5 class="mb-2">
+            <i class="bi bi-people me-2" aria-hidden="true"></i>My Children
+        </h5>
+        <p class="text-muted small mb-3">
+            Select a child to view their academic, attendance, and fee information.
+        </p>
+
+        <div class="row g-3">
+            {% for child in children %}
+                <div class="col-12 col-md-6 col-xl-4">
+                    <div class="card parent-child-card h-100">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="child-avatar" aria-hidden="true">
+                                    {{ child.full_name|slice:":1"|upper }}
+                                </div>
+                                <div class="min-w-0">
+                                    <h6 class="mb-1">
+                                        <a
+                                            href="{% url 'portal:parent_select_child' child.pk %}"
+                                            class="parent-child-name"
+                                        >
+                                            {{ child.full_name }}
+                                        </a>
+                                    </h6>
+                                    <small class="text-muted text-break">
+                                        {{ child.registration_no }}
+                                        · {{ child.class_section_display }}
+                                    </small>
+                                </div>
+                            </div>
+
+                            <hr class="my-3">
+
+                            <div class="row text-center g-2">
+                                <div class="col-6">
+                                    <div class="small text-muted">Attendance</div>
+                                    <div class="fw-bold">
+                                        {% if child.attendance_percentage or child.attendance_percentage == 0 %}
+                                            {{ child.attendance_percentage|floatformat:1 }}%
+                                        {% else %}
+                                            Not available
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="small text-muted">Fee Status</div>
+                                    <div class="fw-bold {% if child.fee_status == 'paid' %}text-success{% elif child.fee_status %}text-warning{% else %}text-muted{% endif %}">
+                                        {{ child.fee_status|default:"Not available"|capfirst }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card-footer bg-transparent">
+                            <a
+                                href="{% url 'portal:parent_select_child' child.pk %}"
+                                class="btn btn-sm btn-outline-success w-100"
+                            >
+                                <i class="bi bi-eye me-1" aria-hidden="true"></i>
+                                View Child Details
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            {% empty %}
+                <div class="col-12">
+                    <div class="empty-state p-4 text-center">
+                        <i class="bi bi-people display-5" aria-hidden="true"></i>
+                        <p class="mt-2 mb-0">
+                            No children are linked to your account. Please contact the school administration.
+                        </p>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+
+        <!-- Notices and calendar -->
+        <div class="row g-3 mt-3">
+            <div class="col-12 col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <i class="bi bi-megaphone me-2" aria-hidden="true"></i>
+                        Recent Notices
+                    </div>
+                    <div class="card-body p-0">
+                        {% if recent_announcements %}
+                            <ul class="list-group list-group-flush">
+                                {% for announcement in recent_announcements %}
+                                    <li class="list-group-item">
+                                        <div class="fw-semibold">
+                                            {{ announcement.title|truncatewords:12 }}
+                                        </div>
+                                        {% if announcement.publish_date %}
+                                            <small class="text-muted">
+                                                {{ announcement.publish_date|date:"M d, Y" }}
+                                            </small>
+                                        {% endif %}
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <div class="empty-state p-3 text-center">
+                                <i class="bi bi-inbox" aria-hidden="true"></i>
+                                <p class="small mb-0">No recent notices are available.</p>
+                            </div>
+                        {% endif %}
+                        <div class="text-center p-3">
+                            <a href="{% url 'announcements:list' %}" class="btn btn-sm btn-outline-success">
+                                View All Notices
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <i class="bi bi-calendar-event me-2" aria-hidden="true"></i>
+                        School Calendar
+                    </div>
+                    <div class="card-body d-flex flex-column justify-content-center text-center">
+                        <i class="bi bi-calendar3 display-5 text-muted" aria-hidden="true"></i>
+                        <p class="text-muted mt-3 mb-3">
+                            View the school calendar for current event dates, examination schedules, and school activities.
+                        </p>
+                        <a href="{% url 'school_calendar:event_list' %}" class="btn btn-sm btn-outline-success align-self-center">
+                            View All Events
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    {% else %}
+        <div class="alert alert-warning" role="alert">
+            <h5>
+                <i class="bi bi-exclamation-triangle me-2" aria-hidden="true"></i>
+                No Parent Profile Linked
+            </h5>
+            <p class="mb-0">
+                Your user account is not linked to a parent record. Please contact the school administration to link your account.
+            </p>
+        </div>
+    {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+    {{ block.super }}
+    <script src="{% static 'js/parent-dashboard.js' %}" defer></script>
 {% endblock %}
