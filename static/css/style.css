@@ -27,6 +27,13 @@
     --content-bg: #f5fbf5;
     --card-border: #c8e6c9;
     --text-muted: #4e6e50;
+    /* APS brand aliases — also used by portal sidebars and login page.
+       Defined here (not only in login.html) so every page has them. */
+    --aps-green: #1b5e20;
+    --aps-green-dark: #0d3d12;
+    --aps-green-light: #e8f5e9;
+    --aps-gold: #d4af37;
+    --aps-gold-dark: #b8941f;
 }
 
 [data-bs-theme="dark"] {
@@ -379,3 +386,57 @@ a { text-decoration: none; }
     background: var(--primary);
     border: 3px solid #fff; box-shadow: 0 0 0 1px var(--primary);
 }
+
+/* ---------- Portal sidebars (student / teacher / parent) ----------
+   Shares the base .sidebar layout (position, width, mobile transform,
+   toggle via .main-wrapper.sidebar-open) so the mobile hamburger and
+   close button in app.js work without any extra wiring. */
+.portal-sidebar {
+    background: var(--aps-green-dark);
+    color: var(--sidebar-fg);
+}
+.portal-sidebar .sidebar-header { border-bottom-color: rgba(212,175,55,.15); }
+.portal-sidebar .portal-nav { padding: .5rem 0; }
+.portal-sidebar .portal-heading {
+    padding: 1rem 1.25rem .25rem;
+    font-size: .65rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 600;
+    color: rgba(212,175,55,.55);
+}
+.portal-sidebar a.portal-link {
+    display: flex; align-items: center; gap: .65rem;
+    padding: .55rem 1.25rem;
+    color: #c8e6c9;
+    font-size: .85rem;
+    font-weight: 500;
+    text-decoration: none;
+    border-left: 3px solid transparent;
+    transition: all .15s ease;
+}
+.portal-sidebar a.portal-link:hover {
+    background: rgba(212,175,55,.10);
+    color: var(--aps-gold);
+}
+.portal-sidebar a.portal-link.active {
+    background: rgba(212,175,55,.14);
+    color: var(--aps-gold);
+    border-left-color: var(--aps-gold);
+}
+.portal-sidebar a.portal-link i { width: 22px; text-align: center; font-size: 1.05rem; }
+
+/* Mobile bottom nav for portals (visible only on xs) */
+.portal-bottom-nav {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--aps-green-dark);
+    display: none; justify-content: space-around;
+    padding: .35rem 0; z-index: 1030;
+    border-top: 1px solid rgba(212,175,55,.2);
+}
+.portal-bottom-nav a {
+    color: #c8e6c9; font-size: .7rem; text-align: center;
+    text-decoration: none; flex: 1; padding: .25rem;
+}
+.portal-bottom-nav a i { display: block; font-size: 1.1rem; }
+@media (max-width: 575.98px) { .portal-bottom-nav { display: flex; } }
