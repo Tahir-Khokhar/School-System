@@ -1,349 +1,198 @@
 {% extends "base.html" %}
 {% load humanize static %}
-
-{% block title %}Student Dashboard · {{ school_name|default:"School ERP" }}{% endblock %}
-
-{% block extra_css %}
-    {{ block.super }}
-    <link rel="stylesheet" href="{% static 'css/student-portal.css' %}">
-{% endblock %}
+{% block title %}Student Dashboard · {{ school_name }}{% endblock %}
 
 {% block sidebar %}
-<aside class="portal-sidebar" id="sidebar" aria-label="Student navigation">
-    <div class="portal-sidebar-brand">
-        <span class="portal-sidebar-brand-icon" aria-hidden="true">
-            <i class="bi bi-mortarboard-fill"></i>
-        </span>
-        <span class="portal-sidebar-brand-text">
-            <strong>{{ school_name|default:"School ERP" }}</strong>
-            <small>Student Portal</small>
-        </span>
-    </div>
-
-    {% include "portal/student/sidebar.html" %}
+<aside class="sidebar portal-sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <a href="{% url 'portal:student_home' %}" class="brand">
+      <span class="brand-logo"><i class="bi bi-mortarboard-fill"></i></span>
+      <div class="brand-text">
+        <div class="brand-name">{{ school_name|default:"School ERP" }}</div>
+        <div class="brand-sub">Student Portal</div>
+      </div>
+    </a>
+    <button class="btn btn-sm d-md-none position-absolute top-0 end-0 mt-2 me-2 text-light" id="sidebarCloseBtn">
+      <i class="bi bi-x-lg"></i>
+    </button>
+  </div>
+  <nav class="portal-nav">
+    <div class="portal-heading">Student Portal</div>
+    <a href="{% url 'portal:student_home' %}" class="portal-link active"><i class="bi bi-grid-1x2"></i><span>Dashboard</span></a>
+    <a href="{% url 'portal:student_profile' %}" class="portal-link"><i class="bi bi-person"></i><span>My Profile</span></a>
+    <a href="{% url 'portal:student_attendance' %}" class="portal-link"><i class="bi bi-check2-square"></i><span>Attendance</span></a>
+    <a href="{% url 'portal:student_timetable' %}" class="portal-link"><i class="bi bi-calendar-week"></i><span>Timetable</span></a>
+    <a href="{% url 'portal:student_homework' %}" class="portal-link"><i class="bi bi-pencil-square"></i><span>Homework</span></a>
+    <a href="{% url 'portal:student_diary' %}" class="portal-link"><i class="bi bi-journal-text"></i><span>Diary</span></a>
+    <a href="{% url 'portal:student_results' %}" class="portal-link"><i class="bi bi-award"></i><span>Results</span></a>
+    <div class="portal-heading">Fees</div>
+    <a href="{% url 'portal:student_fees' %}" class="portal-link"><i class="bi bi-receipt"></i><span>Fees</span></a>
+    <a href="{% url 'portal:student_challans' %}" class="portal-link"><i class="bi bi-file-earmark-text"></i><span>Challans</span></a>
+    <a href="{% url 'portal:student_receipts' %}" class="portal-link"><i class="bi bi-file-earmark-pdf"></i><span>Receipts</span></a>
+    <div class="portal-heading">Engagement</div>
+    <a href="{% url 'portal:student_notices' %}" class="portal-link"><i class="bi bi-megaphone"></i><span>Notices</span></a>
+    <a href="{% url 'portal:student_notifications' %}" class="portal-link"><i class="bi bi-bell"></i><span>Notifications</span></a>
+    <div class="portal-heading">Account</div>
+    <a href="{% url 'password_change' %}" class="portal-link"><i class="bi bi-key"></i><span>Change Password</span></a>
+    <a href="{% url 'logout' %}" class="portal-link"><i class="bi bi-box-arrow-right"></i><span>Logout</span></a>
+  </nav>
 </aside>
 {% endblock %}
 
 {% block content %}
-<div class="student-dashboard">
+<div class="container-fluid">
+  <div class="row">
 
-    {% if student %}
-
-        <!-- Welcome header -->
-        <header class="student-dashboard-header">
-            <div class="student-welcome">
-                <div class="student-avatar" aria-hidden="true">
-                    {{ student.full_name|slice:":1"|upper }}
-                </div>
-                <div>
-                    <h1 class="h3 fw-bold mb-1">
-                        Welcome back, {{ student.full_name }}
-                    </h1>
-                    <p class="text-muted-2 small mb-0">
-                        {{ student.registration_no }}
-                        <span aria-hidden="true">·</span>
-                        {{ student.class_section_display }}
-                        <span aria-hidden="true">·</span>
-                        {% if active_academic_year %}
-                            {{ active_academic_year.name }}
-                        {% else %}
-                            Academic year not assigned
-                        {% endif %}
-                    </p>
-                </div>
-            </div>
-
-            <div class="student-header-actions">
-                <a href="{% url 'portal:student_fees' %}" class="btn btn-success btn-sm">
-                    <i class="bi bi-credit-card me-1" aria-hidden="true"></i>
-                    Pay Fee
-                </a>
-                <a href="{% url 'portal:student_challans' %}" class="btn btn-outline-success btn-sm">
-                    <i class="bi bi-receipt me-1" aria-hidden="true"></i>
-                    View Challans
-                </a>
-            </div>
-        </header>
-
-        <!-- Dashboard statistics -->
-        <section class="row g-3 mb-4" aria-label="Student overview">
-            <div class="col-6 col-md-3">
-                <div class="stat-card text-center h-100">
-                    <div class="stat-icon bg-soft-success mx-auto">
-                        <i class="bi bi-check-circle" aria-hidden="true"></i>
-                    </div>
-                    <div class="stat-label mt-2">Attendance</div>
-                    <div class="stat-value student-stat-green">
-                        {{ attendance_percentage|default:"0"|floatformat:1 }}%
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-6 col-md-3">
-                <div class="stat-card text-center h-100">
-                    <div class="stat-icon bg-soft-warning mx-auto">
-                        <i class="bi bi-credit-card" aria-hidden="true"></i>
-                    </div>
-                    <div class="stat-label mt-2">Current Fees</div>
-                    <div class="stat-value student-stat-gold">
-                        {% with current_challan=student.fee_challans.first %}
-                            {{ currency_symbol|default:"Rs." }}{{ current_challan.total_payable|default:"0"|floatformat:0|intcomma }}
-                        {% endwith %}
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-6 col-md-3">
-                <div class="stat-card text-center h-100">
-                    <div class="stat-icon bg-soft-danger mx-auto">
-                        <i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
-                    </div>
-                    <div class="stat-label mt-2">Pending Fees</div>
-                    <div class="stat-value text-danger">
-                        {{ pending_challans|length }}
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-6 col-md-3">
-                <div class="stat-card text-center h-100">
-                    <div class="stat-icon bg-soft-info mx-auto">
-                        <i class="bi bi-journal-medical" aria-hidden="true"></i>
-                    </div>
-                    <div class="stat-label mt-2">Upcoming Exams</div>
-                    <div class="stat-value student-stat-green">
-                        {{ upcoming_tests|length }}
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Quick actions -->
-        <section class="mb-4" aria-labelledby="student-quick-actions-heading">
-            <h2 class="h5 mb-3 student-section-heading" id="student-quick-actions-heading">
-                Quick Actions
-            </h2>
-            <div class="row g-2">
-                <div class="col-6 col-md-3">
-                    <a href="{% url 'portal:student_fees' %}" class="btn btn-outline-success w-100">
-                        <i class="bi bi-credit-card me-1" aria-hidden="true"></i>Pay Fee
-                    </a>
-                </div>
-                <div class="col-6 col-md-3">
-                    <a href="{% url 'portal:student_attendance' %}" class="btn btn-outline-success w-100">
-                        <i class="bi bi-check2-square me-1" aria-hidden="true"></i>Attendance
-                    </a>
-                </div>
-                <div class="col-6 col-md-3">
-                    <a href="{% url 'portal:student_results' %}" class="btn btn-outline-success w-100">
-                        <i class="bi bi-award me-1" aria-hidden="true"></i>Results
-                    </a>
-                </div>
-                <div class="col-6 col-md-3">
-                    <a href="{% url 'portal:student_timetable' %}" class="btn btn-outline-success w-100">
-                        <i class="bi bi-calendar-week me-1" aria-hidden="true"></i>Timetable
-                    </a>
-                </div>
-                <div class="col-6 col-md-3">
-                    <a href="{% url 'portal:student_homework' %}" class="btn btn-outline-success w-100">
-                        <i class="bi bi-pencil-square me-1" aria-hidden="true"></i>Homework
-                    </a>
-                </div>
-                <div class="col-6 col-md-3">
-                    <a href="{% url 'portal:student_challans' %}" class="btn btn-outline-success w-100">
-                        <i class="bi bi-receipt me-1" aria-hidden="true"></i>Challans
-                    </a>
-                </div>
-                <div class="col-6 col-md-3">
-                    <a href="{% url 'portal:student_receipts' %}" class="btn btn-outline-success w-100">
-                        <i class="bi bi-file-earmark-pdf me-1" aria-hidden="true"></i>Receipts
-                    </a>
-                </div>
-                <div class="col-6 col-md-3">
-                    <a href="{% url 'announcements:list' %}" class="btn btn-outline-success w-100">
-                        <i class="bi bi-megaphone me-1" aria-hidden="true"></i>Notices
-                    </a>
-                </div>
-            </div>
-        </section>
-
-        <!-- Fees -->
-        <section class="mb-4" aria-labelledby="student-fees-heading">
-            <h2 class="h5 mb-3 student-section-heading" id="student-fees-heading">
-                <i class="bi bi-receipt me-2" aria-hidden="true"></i>My Fees
-            </h2>
-
-            <div class="card">
-                <div class="card-body p-0">
-                    {% if pending_challans %}
-                        <div class="table-responsive">
-                            <table class="table table-hover align-middle mb-0">
-                                <thead>
-                                    <tr>
-                                        <th scope="col">Challan #</th>
-                                        <th scope="col">Month</th>
-                                        <th scope="col">Due Date</th>
-                                        <th scope="col">Amount</th>
-                                        <th scope="col">Status</th>
-                                        <th scope="col" class="text-end">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for challan in pending_challans %}
-                                        <tr>
-                                            <td>
-                                                <strong class="student-stat-green">{{ challan.challan_no }}</strong>
-                                            </td>
-                                            <td>{{ challan.month|default:"—" }}</td>
-                                            <td>{{ challan.due_date|date:"M d, Y"|default:"—" }}</td>
-                                            <td>
-                                                {{ currency_symbol|default:"Rs." }}{{ challan.total_payable|floatformat:0|intcomma }}
-                                            </td>
-                                            <td>
-                                                <span class="badge badge-status badge-{{ challan.status }}">
-                                                    {{ challan.get_status_display }}
-                                                </span>
-                                            </td>
-                                            <td class="text-end">
-                                                <div class="d-inline-flex flex-wrap justify-content-end gap-1">
-                                                    <a href="{% url 'fees:challan_detail' challan.pk %}"
-                                                       class="btn btn-sm btn-outline-success"
-                                                       aria-label="View challan {{ challan.challan_no }}">
-                                                        <i class="bi bi-eye" aria-hidden="true"></i>
-                                                    </a>
-                                                    <a href="{% url 'fees:challan_pdf' challan.pk %}"
-                                                       class="btn btn-sm btn-outline-secondary"
-                                                       target="_blank"
-                                                       rel="noopener noreferrer"
-                                                       aria-label="Download challan PDF {{ challan.challan_no }}">
-                                                        <i class="bi bi-file-pdf" aria-hidden="true"></i>
-                                                    </a>
-                                                    {% if challan.status != 'paid' %}
-                                                        <a href="{% url 'fees:online_pay' challan.pk %}"
-                                                           class="btn btn-sm btn-success">
-                                                            <i class="bi bi-credit-card me-1" aria-hidden="true"></i>Pay
-                                                        </a>
-                                                    {% endif %}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                    {% else %}
-                        <div class="empty-state p-4 text-center">
-                            <i class="bi bi-check-circle" aria-hidden="true"></i>
-                            <p class="mb-0">No pending challans were found.</p>
-                        </div>
-                    {% endif %}
-                </div>
-            </div>
-        </section>
-
-        <!-- Recent results and notifications -->
-        <section class="row g-3" aria-label="Results and notifications">
-            <div class="col-md-6">
-                <div class="card h-100">
-                    <div class="card-header">
-                        <i class="bi bi-award me-2" aria-hidden="true"></i>Recent Test Results
-                    </div>
-                    <div class="card-body p-0">
-                        {% if test_results %}
-                            <ul class="list-group list-group-flush">
-                                {% for result in test_results %}
-                                    <li class="list-group-item d-flex justify-content-between align-items-start gap-2">
-                                        <div class="min-w-0">
-                                            <strong>{{ result.test.title }}</strong>
-                                            <br>
-                                            <small class="text-muted">
-                                                {{ result.test.subject.name|default:"" }}
-                                                {% if result.test.date %}
-                                                    · {{ result.test.date|date:"M d, Y" }}
-                                                {% endif %}
-                                            </small>
-                                        </div>
-                                        <span class="badge bg-soft-success text-nowrap">
-                                            {{ result.obtained_marks|floatformat:0 }}/{{ result.test.total_marks|floatformat:0 }}
-                                        </span>
-                                    </li>
-                                {% endfor %}
-                            </ul>
-                        {% else %}
-                            <div class="empty-state p-4 text-center">
-                                <i class="bi bi-clipboard" aria-hidden="true"></i>
-                                <p class="mb-0">No results published yet.</p>
-                            </div>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-md-6">
-                <div class="card h-100">
-                    <div class="card-header">
-                        <i class="bi bi-bell me-2" aria-hidden="true"></i>Notifications
-                    </div>
-                    <div class="card-body p-0">
-                        <ul class="list-group list-group-flush">
-                            {% if unread_notifications_count %}
-                                <li class="list-group-item">
-                                    <i class="bi bi-bell-fill text-warning me-2" aria-hidden="true"></i>
-                                    You have {{ unread_notifications_count }} unread notification{{ unread_notifications_count|pluralize }}.
-                                </li>
-                            {% else %}
-                                <li class="list-group-item text-muted small">
-                                    <i class="bi bi-bell-slash me-2" aria-hidden="true"></i>
-                                    No new notifications.
-                                </li>
-                            {% endif %}
-                            <li class="list-group-item">
-                                <i class="bi bi-megaphone me-2" aria-hidden="true"></i>
-                                <a href="{% url 'announcements:list' %}">View all school notices</a>
-                            </li>
-                            <li class="list-group-item">
-                                <i class="bi bi-calendar-event me-2" aria-hidden="true"></i>
-                                <a href="{% url 'school_calendar:event_list' %}">View school calendar</a>
-                            </li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-    {% else %}
-        <div class="alert alert-warning" role="alert">
-            <h2 class="h5">
-                <i class="bi bi-exclamation-triangle me-2" aria-hidden="true"></i>
-                No student profile linked
-            </h2>
-            <p class="mb-0">
-                Your user account is not linked to a Student record. Please contact the school administration to link your account.
-            </p>
+    <!-- Main content area -->
+    <div class="col-12 p-4">
+      {% if student %}
+      <!-- Welcome area -->
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <div class="d-flex align-items-center gap-3">
+          <div class="avatar-sm" style="width:64px;height:64px;font-size:1.8rem;">{{ student.full_name|slice:":1"|upper }}</div>
+          <div>
+            <h1 class="h3 fw-bold mb-0" style="color:var(--aps-green);">Welcome back, {{ student.full_name }}</h1>
+            <p class="text-muted-2 small mb-0">{{ student.registration_no }} · {{ student.class_section_display }} · {{ active_academic_year.name|default:"2026–2027" }}</p>
+          </div>
         </div>
-    {% endif %}
+        <div>
+          <a href="{% url 'portal:student_fees' %}" class="btn btn-success btn-sm" style="background:var(--aps-green);border-color:var(--aps-green);"><i class="bi bi-credit-card me-1"></i>Pay Fee</a>
+          <a href="{% url 'portal:student_challans' %}" class="btn btn-outline-success btn-sm"><i class="bi bi-receipt me-1"></i>View Challan</a>
+        </div>
+      </div>
 
+      <!-- Dashboard cards -->
+      <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+          <div class="stat-card text-center">
+            <div class="stat-icon bg-soft-success mx-auto"><i class="bi bi-check-circle"></i></div>
+            <div class="stat-label mt-2">Attendance</div>
+            <div class="stat-value" style="color:var(--aps-green);">{{ attendance_percentage|default:"94"|floatformat:1 }}%</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-card text-center">
+            <div class="stat-icon bg-soft-warning mx-auto"><i class="bi bi-credit-card"></i></div>
+            <div class="stat-label mt-2">Current Fees</div>
+            <div class="stat-value" style="color:var(--aps-gold-dark);">{{ currency_symbol|default:"Rs." }}{{ student.fee_challans.first.total_payable|default:0|floatformat:0|intcomma }}</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-card text-center">
+            <div class="stat-icon bg-soft-danger mx-auto"><i class="bi bi-exclamation-triangle"></i></div>
+            <div class="stat-label mt-2">Pending Fees</div>
+            <div class="stat-value text-danger">{{ pending_challans|length|default:0 }}</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-card text-center">
+            <div class="stat-icon bg-soft-info mx-auto"><i class="bi bi-journal-medical"></i></div>
+            <div class="stat-label mt-2">Upcoming Exams</div>
+            <div class="stat-value" style="color:var(--aps-green);">{{ upcoming_tests|length|default:0 }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Actions -->
+      <h5 class="mb-3" style="color:var(--aps-green);">Quick Actions</h5>
+      <div class="row g-2 mb-4">
+        <div class="col-6 col-md-3"><a href="{% url 'portal:student_fees' %}" class="btn btn-outline-success w-100"><i class="bi bi-credit-card me-1"></i>Pay Fee</a></div>
+        <div class="col-6 col-md-3"><a href="{% url 'portal:student_attendance' %}" class="btn btn-outline-success w-100"><i class="bi bi-check2-square me-1"></i>Attendance</a></div>
+        <div class="col-6 col-md-3"><a href="{% url 'portal:student_results' %}" class="btn btn-outline-success w-100"><i class="bi bi-award me-1"></i>Result</a></div>
+        <div class="col-6 col-md-3"><a href="{% url 'portal:student_timetable' %}" class="btn btn-outline-success w-100"><i class="bi bi-calendar-week me-1"></i>Timetable</a></div>
+        <div class="col-6 col-md-3"><a href="{% url 'portal:student_homework' %}" class="btn btn-outline-success w-100"><i class="bi bi-pencil-square me-1"></i>Homework</a></div>
+        <div class="col-6 col-md-3"><a href="{% url 'portal:student_challans' %}" class="btn btn-outline-success w-100"><i class="bi bi-receipt me-1"></i>Challan</a></div>
+        <div class="col-6 col-md-3"><a href="{% url 'portal:student_receipts' %}" class="btn btn-outline-success w-100"><i class="bi bi-file-earmark-pdf me-1"></i>Receipt</a></div>
+        <div class="col-6 col-md-3"><a href="{% url 'announcements:list' %}" class="btn btn-outline-success w-100"><i class="bi bi-megaphone me-1"></i>Notices</a></div>
+      </div>
+
+      <!-- My Fees section -->
+      <h5 class="mb-3" style="color:var(--aps-green);"><i class="bi bi-receipt me-2"></i>My Fees</h5>
+      <div class="card mb-4">
+        <div class="card-body p-0">
+          {% if pending_challans %}
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr>
+                <th>Challan #</th>
+                <th>Month</th>
+                <th>Due Date</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in pending_challans %}
+              <tr>
+                <td><strong style="color:var(--aps-green);">{{ c.challan_no }}</strong></td>
+                <td>{{ c.month|default:"—" }}</td>
+                <td>{{ c.due_date|date:"M d, Y"|default:"—" }}</td>
+                <td>{{ currency_symbol|default:"Rs." }}{{ c.total_payable|floatformat:0|intcomma }}</td>
+                <td><span class="badge badge-status badge-{{ c.status }}">{{ c.get_status_display }}</span></td>
+                <td class="text-end">
+                  <a href="{% url 'fees:challan_detail' c.pk %}" class="btn btn-sm btn-outline-success"><i class="bi bi-eye"></i></a>
+                  <a href="{% url 'fees:challan_pdf' c.pk %}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-file-pdf"></i></a>
+                  {% if c.status != 'paid' %}
+                  <a href="{% url 'fees:online_pay' c.pk %}" class="btn btn-sm btn-success" style="background:var(--aps-green);border-color:var(--aps-green);"><i class="bi bi-credit-card me-1"></i>Pay</a>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <div class="empty-state"><i class="bi bi-check-circle"></i><p>All fees paid! No pending challans.</p></div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Recent Results + Notifications -->
+      <div class="row g-3">
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header"><i class="bi bi-award me-2"></i>Recent Test Results</div>
+            <div class="card-body p-0">
+              {% if test_results %}
+              <ul class="list-group list-group-flush">
+                {% for r in test_results %}
+                <li class="list-group-item d-flex justify-content-between">
+                  <div><strong>{{ r.test.title }}</strong><br><small class="text-muted">{{ r.test.subject.name|default:"" }} · {{ r.test.date|date:"M d, Y" }}</small></div>
+                  <span class="badge bg-soft-success">{{ r.obtained_marks|floatformat:0 }}/{{ r.test.total_marks|floatformat:0 }}</span>
+                </li>
+                {% endfor %}
+              </ul>
+              {% else %}
+              <div class="empty-state"><i class="bi bi-clipboard"></i><p>No results published yet.</p></div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header"><i class="bi bi-bell me-2"></i>Notifications</div>
+            <div class="card-body p-0">
+              <ul class="list-group list-group-flush">
+                {% if unread_notifications_count %}
+                <li class="list-group-item"><i class="bi bi-bell-fill text-warning me-2"></i>You have {{ unread_notifications_count }} unread notifications.</li>
+                {% else %}
+                <li class="list-group-item text-muted small"><i class="bi bi-bell-slash me-2"></i>No new notifications.</li>
+                {% endif %}
+                <li class="list-group-item"><i class="bi bi-megaphone me-2"></i><a href="{% url 'announcements:list' %}">View all school notices</a></li>
+                <li class="list-group-item"><i class="bi bi-calendar-event me-2"></i><a href="{% url 'school_calendar:event_list' %}">View school calendar</a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {% else %}
+      <div class="alert alert-warning">
+        <h5><i class="bi bi-exclamation-triangle me-2"></i>No student profile linked</h5>
+        <p class="mb-0">Your user account is not linked to a Student record. Please contact the school administration to link your account.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
 </div>
-
-{% if student %}
-<!-- Compact navigation for phones; desktop uses the portal sidebar. -->
-<nav class="student-bottom-nav" aria-label="Student quick navigation">
-    <a href="{% url 'portal:student_home' %}">
-        <i class="bi bi-house" aria-hidden="true"></i><span>Home</span>
-    </a>
-    <a href="{% url 'portal:student_attendance' %}">
-        <i class="bi bi-check2-square" aria-hidden="true"></i><span>Attendance</span>
-    </a>
-    <a href="{% url 'portal:student_results' %}">
-        <i class="bi bi-award" aria-hidden="true"></i><span>Results</span>
-    </a>
-    <a href="{% url 'portal:student_fees' %}">
-        <i class="bi bi-credit-card" aria-hidden="true"></i><span>Fees</span>
-    </a>
-    <a href="{% url 'portal:student_homework' %}">
-        <i class="bi bi-pencil-square" aria-hidden="true"></i><span>Homework</span>
-    </a>
-</nav>
-{% endif %}
-
 {% endblock %}
