@@ -1,551 +1,211 @@
 {% extends "base.html" %}
-{% load humanize %}
-
-{% block title %}Teacher Dashboard · {{ school_name|default:"School ERP" }}{% endblock %}
-
-{% block extra_css %}
-    {{ block.super }}
-    <style>
-        /* Teacher portal colors use fallbacks if global tokens are unavailable. */
-        .teacher-portal-sidebar {
-            position: fixed;
-            top: 60px;
-            left: 0;
-            z-index: 1045;
-            width: 220px;
-            height: calc(100vh - 60px);
-            height: calc(100dvh - 60px);
-            overflow-y: auto;
-            padding: 1rem 0;
-            background: var(--aps-green-dark, #123b2a);
-            transition: transform 0.2s ease-in-out;
-        }
-
-        /* The sidebar is a sibling immediately before .main-wrapper in base.html. */
-        .teacher-portal-sidebar + .main-wrapper {
-            width: calc(100% - 220px);
-            margin-left: 220px;
-        }
-
-        .teacher-portal-sidebar .portal-sidebar-brand {
-            display: flex;
-            align-items: center;
-            gap: 0.65rem;
-            padding: 0.65rem 1.125rem 1rem;
-            margin-bottom: 0.5rem;
-            color: #fff;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-            font-weight: 700;
-        }
-
-        .teacher-portal-sidebar .portal-sidebar-brand i {
-            color: var(--aps-gold, #d4af37);
-            font-size: 1.25rem;
-        }
-
-        .teacher-portal-sidebar .sidebar-heading {
-            padding: 12px 18px 6px;
-            color: rgba(212, 175, 55, 0.7);
-            font-size: 10px;
-            font-weight: 700;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-        }
-
-        .teacher-portal-sidebar .portal-nav-link,
-        .teacher-portal-sidebar .sidebar-logout-button {
-            display: block;
-            width: 100%;
-            padding: 10px 18px;
-            color: #c8e6c9;
-            background: transparent;
-            border: 0;
-            border-left: 3px solid transparent;
-            border-radius: 0;
-            font-size: 14px;
-            text-align: left;
-            text-decoration: none;
-            transition: background-color 0.15s ease, color 0.15s ease;
-        }
-
-        .teacher-portal-sidebar .portal-nav-link:hover,
-        .teacher-portal-sidebar .portal-nav-link.active,
-        .teacher-portal-sidebar .sidebar-logout-button:hover {
-            color: var(--aps-gold, #d4af37);
-            background: rgba(212, 175, 55, 0.12);
-            border-left-color: var(--aps-gold, #d4af37);
-        }
-
-        .teacher-portal-sidebar .portal-nav-link i,
-        .teacher-portal-sidebar .sidebar-logout-button i {
-            width: 20px;
-            margin-right: 8px;
-        }
-
-        .teacher-portal-sidebar .sidebar-logout-form {
-            margin: 0;
-        }
-
-        .teacher-dashboard-content {
-            min-width: 0;
-        }
-
-        .teacher-dashboard-avatar {
-            display: inline-flex;
-            width: 64px;
-            height: 64px;
-            flex: 0 0 64px;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
-            background: var(--aps-green, #198754);
-            color: var(--aps-gold, #d4af37);
-            font-size: 1.8rem;
-            font-weight: 700;
-        }
-
-        .teacher-dashboard-title,
-        .teacher-dashboard-value {
-            color: var(--aps-green, #198754);
-        }
-
-        .teacher-dashboard-section-title {
-            color: var(--aps-green, #198754);
-        }
-
-        .teacher-dashboard-net-salary {
-            color: var(--aps-green, #198754);
-        }
-
-        .teacher-dashboard-salary-value {
-            color: var(--aps-gold-dark, #a77b16);
-        }
-
-        .teacher-salary-table th,
-        .teacher-salary-table td {
-            white-space: nowrap;
-            vertical-align: middle;
-        }
-
-        .portal-bottom-nav {
-            display: none;
-        }
-
-        @media (max-width: 767.98px) {
-            .teacher-portal-sidebar {
-                top: 60px;
-                width: min(280px, 85vw);
-                height: calc(100vh - 60px);
-                height: calc(100dvh - 60px);
-                transform: translateX(-105%);
-            }
-
-            /* app.js toggles .sidebar-open on #main-wrapper. */
-            body:has(#main-wrapper.sidebar-open) .teacher-portal-sidebar {
-                transform: translateX(0);
-            }
-
-            .teacher-portal-sidebar + .main-wrapper {
-                width: 100%;
-                margin-left: 0;
-            }
-
-            .teacher-dashboard-content {
-                padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
-            }
-
-            .teacher-dashboard-header {
-                align-items: flex-start !important;
-                flex-direction: column;
-            }
-
-            .teacher-dashboard-header-actions {
-                display: flex;
-                width: 100%;
-                flex-wrap: wrap;
-                gap: 0.5rem;
-            }
-
-            .portal-bottom-nav {
-                position: fixed;
-                right: 0;
-                bottom: 0;
-                left: 0;
-                z-index: 1035;
-                display: flex;
-                justify-content: space-around;
-                gap: 0.25rem;
-                padding: 0.55rem 0.35rem calc(0.55rem + env(safe-area-inset-bottom));
-                background: #fff;
-                border-top: 1px solid rgba(0, 0, 0, 0.12);
-                box-shadow: 0 -4px 14px rgba(0, 0, 0, 0.06);
-            }
-
-            .portal-bottom-nav a {
-                display: flex;
-                min-width: 0;
-                flex: 1 1 0;
-                flex-direction: column;
-                align-items: center;
-                gap: 0.2rem;
-                color: var(--aps-green-dark, #123b2a);
-                font-size: 0.68rem;
-                line-height: 1.2;
-                text-align: center;
-                text-decoration: none;
-            }
-
-            .portal-bottom-nav a i {
-                font-size: 1.1rem;
-            }
-
-            .portal-bottom-nav a.active {
-                color: var(--aps-green, #198754);
-                font-weight: 700;
-            }
-
-            .teacher-salary-table {
-                min-width: 760px;
-            }
-        }
-
-        @media (min-width: 768px) {
-            .portal-bottom-nav {
-                display: none !important;
-            }
-        }
-    </style>
-{% endblock %}
+{% load humanize static %}
+{% block title %}Teacher Dashboard · {{ school_name }}{% endblock %}
 
 {% block sidebar %}
-<aside class="portal-sidebar teacher-portal-sidebar" id="sidebar" aria-label="Teacher navigation">
-    <div class="portal-sidebar-brand">
-        <i class="bi bi-mortarboard-fill" aria-hidden="true"></i>
-        <span>{{ school_name|default:"School ERP" }}</span>
-    </div>
-
-    <div class="sidebar-heading">Teacher Portal</div>
-
-    <nav aria-label="Teacher portal menu">
-        <a href="{% url 'portal:teacher_home' %}" class="portal-nav-link active">
-            <i class="bi bi-grid-1x2" aria-hidden="true"></i>Dashboard
-        </a>
-        <a href="{% url 'attendance:daily_mark' %}" class="portal-nav-link">
-            <i class="bi bi-check2-square" aria-hidden="true"></i>Attendance
-        </a>
-        <a href="{% url 'diary:entry_list' %}" class="portal-nav-link">
-            <i class="bi bi-journal-text" aria-hidden="true"></i>Diary
-        </a>
-        <a href="{% url 'homework:homework_list' %}" class="portal-nav-link">
-            <i class="bi bi-pencil-square" aria-hidden="true"></i>Homework
-        </a>
-        <a href="{% url 'syllabus:syllabus_list' %}" class="portal-nav-link">
-            <i class="bi bi-list-task" aria-hidden="true"></i>Syllabus
-        </a>
-        <a href="{% url 'examinations:classtest_list' %}" class="portal-nav-link">
-            <i class="bi bi-journal-medical" aria-hidden="true"></i>Tests
-        </a>
-
-        {% if perms.payroll.view_payroll %}
-            <div class="sidebar-heading">Employment</div>
-            <a href="{% url 'payroll:payroll_list' %}?q={{ teacher.employee_id|default:''|urlencode }}" class="portal-nav-link">
-                <i class="bi bi-cash-coin" aria-hidden="true"></i>My Salary
-            </a>
-        {% endif %}
-
-        <div class="sidebar-heading">Engagement</div>
-        <a href="{% url 'announcements:list' %}" class="portal-nav-link">
-            <i class="bi bi-megaphone" aria-hidden="true"></i>Notices
-        </a>
-        <a href="{% url 'notifications:list' %}" class="portal-nav-link">
-            <i class="bi bi-bell" aria-hidden="true"></i>Notifications
-        </a>
-
-        <div class="sidebar-heading">Account</div>
-        <a href="{% url 'password_change' %}" class="portal-nav-link">
-            <i class="bi bi-key" aria-hidden="true"></i>Change Password
-        </a>
-        <form method="post" action="{% url 'logout' %}" class="sidebar-logout-form">
-            {% csrf_token %}
-            <button type="submit" class="sidebar-logout-button">
-                <i class="bi bi-box-arrow-right" aria-hidden="true"></i>Logout
-            </button>
-        </form>
-    </nav>
-
-    <button
-        type="button"
-        class="btn btn-sm d-md-none position-absolute top-0 end-0 mt-2 me-2 text-light"
-        id="sidebarCloseBtn"
-        aria-label="Close navigation menu"
-    >
-        <i class="bi bi-x-lg" aria-hidden="true"></i>
+<aside class="sidebar portal-sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <a href="{% url 'portal:teacher_home' %}" class="brand">
+      <span class="brand-logo"><i class="bi bi-mortarboard-fill"></i></span>
+      <div class="brand-text">
+        <div class="brand-name">{{ school_name|default:"School ERP" }}</div>
+        <div class="brand-sub">Teacher Portal</div>
+      </div>
+    </a>
+    <button class="btn btn-sm d-md-none position-absolute top-0 end-0 mt-2 me-2 text-light" id="sidebarCloseBtn">
+      <i class="bi bi-x-lg"></i>
     </button>
+  </div>
+  <nav class="portal-nav">
+    <div class="portal-heading">Teaching</div>
+    <a href="{% url 'portal:teacher_home' %}" class="portal-link active"><i class="bi bi-grid-1x2"></i><span>Dashboard</span></a>
+    <a href="{% url 'attendance:daily_mark' %}" class="portal-link"><i class="bi bi-check2-square"></i><span>Attendance</span></a>
+    <a href="{% url 'diary:entry_list' %}" class="portal-link"><i class="bi bi-journal-text"></i><span>Diary</span></a>
+    <a href="{% url 'homework:homework_list' %}" class="portal-link"><i class="bi bi-pencil-square"></i><span>Homework</span></a>
+    <a href="{% url 'syllabus:syllabus_list' %}" class="portal-link"><i class="bi bi-list-task"></i><span>Syllabus</span></a>
+    <a href="{% url 'examinations:classtest_list' %}" class="portal-link"><i class="bi bi-journal-medical"></i><span>Tests</span></a>
+    {% if perms.payroll.view_payroll %}
+    <div class="portal-heading">Employment</div>
+    <a href="{% url 'payroll:payroll_list' %}?q={{ teacher.employee_id|default:'' }}" class="portal-link"><i class="bi bi-cash-coin"></i><span>My Salary</span></a>
+    {% endif %}
+    <div class="portal-heading">Engagement</div>
+    <a href="{% url 'announcements:list' %}" class="portal-link"><i class="bi bi-megaphone"></i><span>Notices</span></a>
+    <a href="{% url 'notifications:list' %}" class="portal-link"><i class="bi bi-bell"></i><span>Notifications</span></a>
+    <div class="portal-heading">Account</div>
+    <a href="{% url 'password_change' %}" class="portal-link"><i class="bi bi-key"></i><span>Change Password</span></a>
+    <a href="{% url 'logout' %}" class="portal-link"><i class="bi bi-box-arrow-right"></i><span>Logout</span></a>
+  </nav>
 </aside>
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid teacher-dashboard-content px-3 px-lg-4 py-3">
-    {% if teacher %}
-        <!-- Welcome area -->
-        <div class="d-flex justify-content-between gap-3 mb-4 teacher-dashboard-header">
-            <div class="d-flex align-items-center gap-3">
-                <div class="teacher-dashboard-avatar" aria-hidden="true">
-                    {{ teacher.full_name|default:"T"|slice:":1"|upper }}
-                </div>
-                <div>
-                    <h1 class="h3 fw-bold mb-0 teacher-dashboard-title">
-                        Welcome, {{ teacher.full_name }}
-                    </h1>
-                    <p class="text-muted-2 small mb-0">
-                        {{ teacher.employee_id }} ·
-                        {{ teacher.designation|default:"Teacher" }} ·
-                        {{ teacher.get_teaching_level_display|default:"" }}
-                    </p>
-                </div>
-            </div>
+<div class="container-fluid">
+  <div class="row">
 
-            <div class="teacher-dashboard-header-actions">
-                <a href="{% url 'attendance:daily_mark' %}" class="btn btn-success btn-sm">
-                    <i class="bi bi-check2-square me-1" aria-hidden="true"></i>Mark Attendance
-                </a>
-                {% if perms.payroll.view_payroll %}
-                    <a href="{% url 'payroll:payroll_list' %}?q={{ teacher.employee_id|default:''|urlencode }}" class="btn btn-outline-success btn-sm">
-                        <i class="bi bi-cash-coin me-1" aria-hidden="true"></i>My Salary
-                    </a>
-                {% endif %}
-            </div>
+    <!-- Main content area -->
+    <div class="col-12 p-4">
+      {% if teacher %}
+      <!-- Welcome area -->
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <div class="d-flex align-items-center gap-3">
+          <div class="avatar-sm" style="width:64px;height:64px;font-size:1.8rem;background:var(--aps-green);color:var(--aps-gold);">{{ teacher.full_name|slice:":1"|upper }}</div>
+          <div>
+            <h1 class="h3 fw-bold mb-0" style="color:var(--aps-green);">Welcome, {{ teacher.full_name }}</h1>
+            <p class="text-muted-2 small mb-0">{{ teacher.employee_id }} · {{ teacher.designation|default:"Teacher" }} · {{ teacher.get_teaching_level_display|default:"" }}</p>
+          </div>
         </div>
-
-        <!-- Dashboard statistics -->
-        <div class="row g-3 mb-4">
-            <div class="col-6 {% if perms.payroll.view_payroll %}col-md-3{% else %}col-md-4{% endif %}">
-                <div class="stat-card text-center h-100">
-                    <div class="stat-icon bg-soft-primary mx-auto"><i class="bi bi-mortarboard" aria-hidden="true"></i></div>
-                    <div class="stat-label mt-2">My Classes</div>
-                    <div class="stat-value teacher-dashboard-value">{{ my_classes.count|default:0 }}</div>
-                </div>
-            </div>
-
-            <div class="col-6 {% if perms.payroll.view_payroll %}col-md-3{% else %}col-md-4{% endif %}">
-                <div class="stat-card text-center h-100">
-                    <div class="stat-icon bg-soft-info mx-auto"><i class="bi bi-journal-bookmark" aria-hidden="true"></i></div>
-                    <div class="stat-label mt-2">My Subjects</div>
-                    <div class="stat-value teacher-dashboard-value">{{ my_subjects.count|default:0 }}</div>
-                </div>
-            </div>
-
-            <div class="col-6 {% if perms.payroll.view_payroll %}col-md-3{% else %}col-md-4{% endif %}">
-                <div class="stat-card text-center h-100">
-                    <div class="stat-icon bg-soft-success mx-auto"><i class="bi bi-check-circle" aria-hidden="true"></i></div>
-                    <div class="stat-label mt-2">Attendance Marked Today</div>
-                    <div class="stat-value teacher-dashboard-value">{{ today_attendance_count|default:0 }}</div>
-                </div>
-            </div>
-
-            {% if perms.payroll.view_payroll %}
-                <div class="col-6 col-md-3">
-                    <div class="stat-card text-center h-100">
-                        <div class="stat-icon bg-soft-warning mx-auto"><i class="bi bi-cash-coin" aria-hidden="true"></i></div>
-                        <div class="stat-label mt-2">Salary Slips</div>
-                        <div class="stat-value teacher-dashboard-salary-value">
-                            {{ teacher.payrolls.count|default:0 }}
-                        </div>
-                    </div>
-                </div>
-            {% endif %}
+        <div>
+          <a href="{% url 'attendance:daily_mark' %}" class="btn btn-success btn-sm" style="background:var(--aps-green);border-color:var(--aps-green);"><i class="bi bi-check2-square me-1"></i>Mark Attendance</a>
+          {% if perms.payroll.view_payroll %}
+          <a href="{% url 'payroll:payroll_list' %}?q={{ teacher.employee_id|default:'' }}" class="btn btn-outline-success btn-sm"><i class="bi bi-cash-coin me-1"></i>My Salary</a>
+          {% endif %}
         </div>
+      </div>
 
-        <!-- Quick actions -->
-        <h5 class="mb-3 teacher-dashboard-section-title">Quick Actions</h5>
-        <div class="row g-2 mb-4">
-            <div class="col-6 col-md-3">
-                <a href="{% url 'attendance:daily_mark' %}" class="btn btn-outline-success w-100">
-                    <i class="bi bi-check2-square me-1" aria-hidden="true"></i>Mark Attendance
-                </a>
-            </div>
-            <div class="col-6 col-md-3">
-                <a href="{% url 'diary:entry_list' %}" class="btn btn-outline-success w-100">
-                    <i class="bi bi-journal-text me-1" aria-hidden="true"></i>Diary
-                </a>
-            </div>
-            <div class="col-6 col-md-3">
-                <a href="{% url 'homework:homework_list' %}" class="btn btn-outline-success w-100">
-                    <i class="bi bi-pencil-square me-1" aria-hidden="true"></i>Homework
-                </a>
-            </div>
-            <div class="col-6 col-md-3">
-                <a href="{% url 'examinations:classtest_list' %}" class="btn btn-outline-success w-100">
-                    <i class="bi bi-journal-medical me-1" aria-hidden="true"></i>Tests
-                </a>
-            </div>
-            <div class="col-6 col-md-3">
-                <a href="{% url 'syllabus:syllabus_list' %}" class="btn btn-outline-success w-100">
-                    <i class="bi bi-list-task me-1" aria-hidden="true"></i>Syllabus
-                </a>
-            </div>
-            {% if perms.payroll.view_payroll %}
-                <div class="col-6 col-md-3">
-                    <a href="{% url 'payroll:payroll_list' %}?q={{ teacher.employee_id|default:''|urlencode }}" class="btn btn-outline-success w-100">
-                        <i class="bi bi-cash-coin me-1" aria-hidden="true"></i>My Salary
-                    </a>
-                </div>
-            {% endif %}
-            <div class="col-6 col-md-3">
-                <a href="{% url 'announcements:list' %}" class="btn btn-outline-success w-100">
-                    <i class="bi bi-megaphone me-1" aria-hidden="true"></i>Notices
-                </a>
-            </div>
-            <div class="col-6 col-md-3">
-                <a href="{% url 'notifications:list' %}" class="btn btn-outline-success w-100">
-                    <i class="bi bi-bell me-1" aria-hidden="true"></i>Alerts
-                </a>
-            </div>
+      <!-- Dashboard cards -->
+      <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+          <div class="stat-card text-center">
+            <div class="stat-icon bg-soft-primary mx-auto"><i class="bi bi-mortarboard"></i></div>
+            <div class="stat-label mt-2">My Classes</div>
+            <div class="stat-value" style="color:var(--aps-green);">{{ my_classes.count|default:0 }}</div>
+          </div>
         </div>
-
-        <!-- Classes and subjects -->
-        <div class="row g-3">
-            <div class="col-md-6">
-                <div class="card h-100">
-                    <div class="card-header">
-                        <i class="bi bi-mortarboard me-2" aria-hidden="true"></i>My Classes
-                    </div>
-                    <div class="card-body p-0">
-                        <ul class="list-group list-group-flush">
-                            {% for class_item in my_classes %}
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    <span>{{ class_item.name }}</span>
-                                    <span class="badge bg-soft-primary">
-                                        {{ class_item.student_count|default:0 }} students
-                                    </span>
-                                </li>
-                            {% empty %}
-                                <li class="list-group-item text-muted-2">No classes assigned</li>
-                            {% endfor %}
-                        </ul>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-md-6">
-                <div class="card h-100">
-                    <div class="card-header">
-                        <i class="bi bi-journal-bookmark me-2" aria-hidden="true"></i>My Subjects
-                    </div>
-                    <div class="card-body p-0">
-                        <ul class="list-group list-group-flush">
-                            {% for subject in my_subjects %}
-                                <li class="list-group-item">{{ subject.name }}</li>
-                            {% empty %}
-                                <li class="list-group-item text-muted-2">No subjects assigned</li>
-                            {% endfor %}
-                        </ul>
-                    </div>
-                </div>
-            </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-card text-center">
+            <div class="stat-icon bg-soft-info mx-auto"><i class="bi bi-journal-bookmark"></i></div>
+            <div class="stat-label mt-2">My Subjects</div>
+            <div class="stat-value" style="color:var(--aps-green);">{{ my_subjects.count|default:0 }}</div>
+          </div>
         </div>
-
-        <!-- Salary information: show the entire section only with payroll permission. -->
-        {% if perms.payroll.view_payroll %}
-            <h5 class="mb-3 mt-4 teacher-dashboard-section-title">
-                <i class="bi bi-cash-coin me-2" aria-hidden="true"></i>My Salary
-            </h5>
-
-            <div class="card mb-4">
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover teacher-salary-table mb-0">
-                            <thead>
-                                <tr>
-                                    <th scope="col">Month</th>
-                                    <th scope="col">Basic</th>
-                                    <th scope="col">Allowances</th>
-                                    <th scope="col">Deductions</th>
-                                    <th scope="col">Net Salary</th>
-                                    <th scope="col">Status</th>
-                                    <th scope="col" class="text-end">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for payroll in teacher.payrolls.all|slice:":5" %}
-                                    <tr>
-                                        <td><strong>{{ payroll.month }}</strong></td>
-                                        <td>{{ currency_symbol|default:"Rs." }}{{ payroll.basic_salary|floatformat:0|intcomma }}</td>
-                                        <td>{{ currency_symbol|default:"Rs." }}{{ payroll.allowances|floatformat:0|intcomma }}</td>
-                                        <td>{{ currency_symbol|default:"Rs." }}{{ payroll.deductions|floatformat:0|intcomma }}</td>
-                                        <td>
-                                            <strong class="teacher-dashboard-net-salary">
-                                                {{ currency_symbol|default:"Rs." }}{{ payroll.net_salary|floatformat:0|intcomma }}
-                                            </strong>
-                                        </td>
-                                        <td>
-                                            <span class="badge badge-{{ payroll.status }}">
-                                                {{ payroll.get_status_display }}
-                                            </span>
-                                        </td>
-                                        <td class="text-end">
-                                            <a href="{% url 'payroll:payroll_detail' payroll.pk %}"
-                                               class="btn btn-sm btn-outline-success"
-                                               aria-label="View payroll for {{ payroll.month }}">
-                                                <i class="bi bi-eye" aria-hidden="true"></i>
-                                            </a>
-                                            {% if payroll.status == 'paid' %}
-                                                <a href="{% url 'payroll:salary_slip_pdf' payroll.pk %}"
-                                                   target="_blank"
-                                                   rel="noopener noreferrer"
-                                                   class="btn btn-sm btn-outline-secondary"
-                                                   aria-label="Download salary slip for {{ payroll.month }}">
-                                                    <i class="bi bi-file-pdf" aria-hidden="true"></i>
-                                                </a>
-                                            {% endif %}
-                                        </td>
-                                    </tr>
-                                {% empty %}
-                                    <tr>
-                                        <td colspan="7" class="text-center text-muted-2 py-4">
-                                            <i class="bi bi-cash-coin d-block fs-3 mb-2" aria-hidden="true"></i>
-                                            No salary records yet.
-                                        </td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        {% endif %}
-
-        <!-- Mobile navigation: permission-check the complete salary link. -->
-        <nav class="portal-bottom-nav" aria-label="Quick navigation">
-            <a href="{% url 'portal:teacher_home' %}" class="active">
-                <i class="bi bi-house" aria-hidden="true"></i><span>Home</span>
-            </a>
-            <a href="{% url 'attendance:daily_mark' %}">
-                <i class="bi bi-check2-square" aria-hidden="true"></i><span>Attendance</span>
-            </a>
-            <a href="{% url 'homework:homework_list' %}">
-                <i class="bi bi-pencil-square" aria-hidden="true"></i><span>Homework</span>
-            </a>
-            {% if perms.payroll.view_payroll %}
-                <a href="{% url 'payroll:payroll_list' %}?q={{ teacher.employee_id|default:''|urlencode }}">
-                    <i class="bi bi-cash-coin" aria-hidden="true"></i><span>Salary</span>
-                </a>
-            {% endif %}
-            <a href="{% url 'notifications:list' %}">
-                <i class="bi bi-bell" aria-hidden="true"></i><span>Alerts</span>
-            </a>
-        </nav>
-
-    {% else %}
-        <div class="alert alert-warning" role="alert">
-            <h5>
-                <i class="bi bi-exclamation-triangle me-2" aria-hidden="true"></i>
-                No teacher profile linked
-            </h5>
-            <p class="mb-0">
-                Your user account is not linked to a Teacher record. Please contact the school administration.
-            </p>
+        <div class="col-6 col-md-3">
+          <div class="stat-card text-center">
+            <div class="stat-icon bg-soft-success mx-auto"><i class="bi bi-check-circle"></i></div>
+            <div class="stat-label mt-2">Attendance Marked Today</div>
+            <div class="stat-value" style="color:var(--aps-green);">{{ today_attendance_count|default:0 }}</div>
+          </div>
         </div>
-    {% endif %}
+        <div class="col-6 col-md-3">
+          <div class="stat-card text-center">
+            <div class="stat-icon bg-soft-warning mx-auto"><i class="bi bi-cash-coin"></i></div>
+            <div class="stat-label mt-2">Salary Slips</div>
+            <div class="stat-value" style="color:var(--aps-gold-dark);">{{ teacher.payrolls.count|default:0 }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Actions -->
+      <h5 class="mb-3" style="color:var(--aps-green);">Quick Actions</h5>
+      <div class="row g-2 mb-4">
+        <div class="col-6 col-md-3"><a href="{% url 'attendance:daily_mark' %}" class="btn btn-outline-success w-100"><i class="bi bi-check2-square me-1"></i>Mark Attendance</a></div>
+        <div class="col-6 col-md-3"><a href="{% url 'diary:entry_list' %}" class="btn btn-outline-success w-100"><i class="bi bi-journal-text me-1"></i>Diary</a></div>
+        <div class="col-6 col-md-3"><a href="{% url 'homework:homework_list' %}" class="btn btn-outline-success w-100"><i class="bi bi-pencil-square me-1"></i>Homework</a></div>
+        <div class="col-6 col-md-3"><a href="{% url 'examinations:classtest_list' %}" class="btn btn-outline-success w-100"><i class="bi bi-journal-medical me-1"></i>Tests</a></div>
+        <div class="col-6 col-md-3"><a href="{% url 'syllabus:syllabus_list' %}" class="btn btn-outline-success w-100"><i class="bi bi-list-task me-1"></i>Syllabus</a></div>
+        <div class="col-6 col-md-3">{% if perms.payroll.view_payroll %}<a href="{% url 'payroll:payroll_list' %}?q={{ teacher.employee_id|default:'' }}" class="btn btn-outline-success w-100"><i class="bi bi-cash-coin me-1"></i>My Salary</a>{% endif %}</div>
+        <div class="col-6 col-md-3"><a href="{% url 'announcements:list' %}" class="btn btn-outline-success w-100"><i class="bi bi-megaphone me-1"></i>Notices</a></div>
+        <div class="col-6 col-md-3"><a href="{% url 'notifications:list' %}" class="btn btn-outline-success w-100"><i class="bi bi-bell me-1"></i>Alerts</a></div>
+      </div>
+
+      <!-- My Classes + My Subjects -->
+      <div class="row g-3">
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header"><i class="bi bi-mortarboard me-2"></i>My Classes</div>
+            <div class="card-body p-0">
+              <ul class="list-group list-group-flush">
+                {% for c in my_classes %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                  <span>{{ c.name }}</span>
+                  <span class="badge bg-soft-primary">{{ c.student_count|default:0 }} students</span>
+                </li>
+                {% empty %}
+                <li class="list-group-item text-muted-2">No classes assigned</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header"><i class="bi bi-journal-bookmark me-2"></i>My Subjects</div>
+            <div class="card-body p-0">
+              <ul class="list-group list-group-flush">
+                {% for s in my_subjects %}
+                <li class="list-group-item">{{ s.name }}</li>
+                {% empty %}
+                <li class="list-group-item text-muted-2">No subjects assigned</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- My Salary section -->
+      {% if perms.payroll.view_payroll %}
+      <h5 class="mb-3 mt-4" style="color:var(--aps-green);"><i class="bi bi-cash-coin me-2"></i>My Salary</h5>
+      <div class="card mb-4">
+        <div class="card-body p-0">
+          {% if teacher.payrolls.exists %}
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr>
+                <th>Month</th>
+                <th>Basic</th>
+                <th>Allowances</th>
+                <th>Deductions</th>
+                <th>Net Salary</th>
+                <th>Status</th>
+                <th class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in teacher.payrolls.all|slice:":5" %}
+              <tr>
+                <td><strong>{{ p.month }}</strong></td>
+                <td>{{ currency_symbol|default:"Rs." }}{{ p.basic_salary|floatformat:0|intcomma }}</td>
+                <td>{{ currency_symbol|default:"Rs." }}{{ p.allowances|floatformat:0|intcomma }}</td>
+                <td>{{ currency_symbol|default:"Rs." }}{{ p.deductions|floatformat:0|intcomma }}</td>
+                <td><strong style="color:var(--aps-green);">{{ currency_symbol|default:"Rs." }}{{ p.net_salary|floatformat:0|intcomma }}</strong></td>
+                <td><span class="badge badge-{{ p.status }}">{{ p.get_status_display }}</span></td>
+                <td class="text-end">
+                  <a href="{% url 'payroll:payroll_detail' p.pk %}" class="btn btn-sm btn-outline-success"><i class="bi bi-eye"></i></a>
+                  {% if p.status == 'paid' %}
+                  <a href="{% url 'payroll:salary_slip_pdf' p.pk %}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-file-pdf"></i></a>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <div class="empty-state"><i class="bi bi-cash-coin"></i><p>No salary records yet.</p></div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% else %}
+      <div class="alert alert-warning">
+        <h5><i class="bi bi-exclamation-triangle me-2"></i>No teacher profile linked</h5>
+        <p class="mb-0">Your user account is not linked to a Teacher record. Please contact the school administration.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Mobile bottom nav -->
+<div class="portal-bottom-nav">
+  <a href="{% url 'portal:teacher_home' %}"><i class="bi bi-house"></i>Home</a>
+  <a href="{% url 'attendance:daily_mark' %}"><i class="bi bi-check2-square"></i>Attendance</a>
+  <a href="{% url 'homework:homework_list' %}"><i class="bi bi-pencil-square"></i>Homework</a>
+  {% if perms.payroll.view_payroll %}
+  <a href="{% url 'payroll:payroll_list' %}?q={{ teacher.employee_id|default:'' }}"><i class="bi bi-cash-coin"></i>Salary</a>
+  {% else %}
+  <a href="{% url 'announcements:list' %}"><i class="bi bi-megaphone"></i>Notices</a>
+  {% endif %}
+  <a href="{% url 'notifications:list' %}"><i class="bi bi-bell"></i>Alerts</a>
 </div>
 {% endblock %}
