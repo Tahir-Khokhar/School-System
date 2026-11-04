@@ -2,11 +2,30 @@
 School ERP — accounts app.
 Custom user model with role, groups, and helper role-check properties.
 """
-from django.contrib.auth.models import AbstractUser, Group, Permission
+from django.contrib.auth.models import AbstractUser, Group, Permission, UserManager
 from django.db import models
 from django.urls import reverse
 
 from apps.common.validators import validate_file_extension, validate_file_size
+
+
+class RoleAwareUserManager(UserManager):
+    """Extends UserManager so createsuperuser sets role=SUPER_ADMIN.
+
+    Without this, the default role=STUDENT means a superuser created via
+    `manage.py createsuperuser` is redirected to the student portal by
+    DashboardHomeView.dispatch (which checks role before is_superuser).
+    """
+
+    def create_superuser(self, username, email=None, password=None, **extra_fields):
+        extra_fields.setdefault("is_staff", True)
+        extra_fields.setdefault("is_superuser", True)
+        extra_fields.setdefault("role", User.Role.SUPER_ADMIN)
+        if extra_fields.get("is_staff") is not True:
+            raise ValueError("Superuser must have is_staff=True.")
+        if extra_fields.get("is_superuser") is not True:
+            raise ValueError("Superuser must have is_superuser=True.")
+        return self._create_user(username, email, password, **extra_fields)
 
 
 class User(AbstractUser):
@@ -23,6 +42,9 @@ class User(AbstractUser):
         RECEPTIONIST = "receptionist", "Receptionist"
         STUDENT = "student", "Student"
         PARENT = "parent", "Parent"
+
+    # Role-aware manager so createsuperuser lands on the staff dashboard.
+    objects = RoleAwareUserManager()
 
     role = models.CharField(
         max_length=20, choices=Role.choices,
