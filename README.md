@@ -74,25 +74,29 @@ python manage.py migrate
 # 5. Create role groups (Super Admin, Principal, Coordinator, Teacher, Accountant, HR, Receptionist, Student, Parent)
 python manage.py create_school_roles
 
-# 6. Generate demo data
-python manage.py generate_demo_data
+# 6. Seed demo data — creates 12 demo users + a full demo dataset
+#    (idempotent — safe to re-run; --reset wipes everything first)
+python manage.py seed_demo_data
 
 # 7. Run server
 python manage.py runserver
 ```
 
-Open `http://localhost:8000/` and log in with one of these:
+Open `http://localhost:8000/` and log in with one of these (password for all = `admin123`):
 
-| Username     | Password  | Role                  |
-|--------------|-----------|-----------------------|
-| superadmin   | admin123  | Super Admin           |
-| principal    | admin123  | Principal             |
-| admin        | admin123  | School Administration |
-| coordinator  | admin123  | Coordinator           |
-| accountant   | admin123  | Accountant            |
-| hr_payroll   | admin123  | HR / Payroll Officer  |
-| receptionist | admin123  | Receptionist          |
-| teacher1     | admin123  | Teacher               |
+| Username     | Role                  | Access                                             |
+|--------------|-----------------------|----------------------------------------------------|
+| `superadmin` | Super Admin           | Everything (Django admin + ERP admin + portals)   |
+| `admin`      | School Administration | Admin dashboard, fees, admissions, students       |
+| `principal`  | Principal             | Oversight dashboards + finance KPIs               |
+| `coordinator`| Coordinator           | Academic coordination (no financial data)         |
+| `accountant` | Accountant            | Fees only (blocked from payroll)                   |
+| `hr_payroll` | HR / Payroll Officer  | Payroll only (blocked from fees)                   |
+| `receptionist`| Receptionist         | Admissions desk                                    |
+| `teacher1`   | Teacher               | Grade 8-A class teacher + own portal              |
+| `teacher2`   | Teacher               | NOT a class teacher (for negative testing)         |
+| `parent1`    | Parent                | Own child's records only                            |
+| `student1`   | Student               | Own records only                                    |
 
 ## Switching to PostgreSQL (optional, for production)
 
@@ -117,7 +121,7 @@ python manage.py check_db
 # 5. Migrate against PostgreSQL + load data
 python manage.py migrate
 python manage.py create_school_roles
-python manage.py generate_demo_data
+python manage.py seed_demo_data
 ```
 
 The setup script enables `pg_trgm`, `unaccent`, and `citext` extensions, sets the timezone, and sets a 30-second statement timeout to catch runaway queries.
@@ -128,7 +132,9 @@ The setup script enables `pg_trgm`, `unaccent`, and `citext` extensions, sets th
 |----------------------------------------|---------------------------------------------------------|
 | `check_db`                             | Verify database connection (SQLite or PostgreSQL)       |
 | `create_school_roles`                  | Create all role groups with appropriate permissions    |
-| `generate_demo_data`                   | Seed comprehensive demo data + write `records.txt`     |
+| `seed_demo_data`                       | **Fast idempotent demo dataset** (12 users + records)   |
+| `seed_demo_data --reset --no-input`    | Wipe everything then re-seed                            |
+| `generate_demo_data`                   | (Legacy) Larger demo dataset — slow, times out         |
 | `export_data teachers`                 | Export teachers/staff directory to Excel (.xlsx)        |
 | `export_data students`                 | Export full student directory to Excel (.xlsx)         |
 | `export_data challans`                 | Export all fee challans + payments to Excel (.xlsx)    |
