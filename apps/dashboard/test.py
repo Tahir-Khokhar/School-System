@@ -95,3 +95,71 @@ class DashboardChartContextTests(TestCase):
             self.assertIsInstance(item, dict)
             self.assertIn("name", item)
             self.assertIn("count", item)
+
+
+class MobileSidebarToggleTests(TestCase):
+    """Guards against the phone-sidebar regression: the ☰ button toggled
+    `.main-wrapper.sidebar-open`, but in base.html the `.sidebar` is a
+    SIBLING of `.main-wrapper`, so the `.main-wrapper.sidebar-open .sidebar`
+    descendant selector never matched and the drawer stayed hidden on phones.
+
+    These tests lock in the fix: the toggle is on <body>, the CSS rule keys
+    off body.sidebar-open, and the toggle/close buttons are present.
+    """
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_superuser(
+            username="adm", password="Adm1234!", email="adm@example.com"
+        )
+
+    def setUp(self):
+        self.client.force_login(self.user)
+        self.url = reverse("dashboard:home")
+
+    def test_toggle_and_close_buttons_present(self):
+        """Both #sidebarToggle and #sidebarCloseBtn must be in the page,
+        otherwise the mobile drawer has no open/close control."""
+        html = self.client.get(self.url).content.decode()
+        self.assertIn("sidebarToggle", html)
+        self.assertIn("sidebarCloseBtn", html)
+
+    def test_app_js_toggles_body_not_main_wrapper(self):
+        """app.js must toggle body.sidebar-open. Toggling a class on
+        .main-wrapper is the regression — its descendant selector can
+        never reach the sibling .sidebar."""
+        import os
+        from django.conf import settings
+        app_js = open(
+            os.path.join(settings.BASE_DIR, "static", "js", "app.js")
+        ).read()
+        self.assertIn("document.body.classList.toggle", app_js)
+        # The old broken selector must not be present.
+        self.assertNotIn("mainWrapper.classList.toggle", app_js)
+        self.assertNotIn('main-wrapper").classList', app_js)
+
+    def test_style_css_has_body_sidebar_open_rule(self):
+        """style.css must define body.sidebar-open .sidebar — a class on
+        .main-wrapper would not reach the sibling sidebar."""
+        import os
+        from django.conf import settings
+        css = open(
+            os.path.join(settings.BASE_DIR, "static", "css", "style.css")
+        ).read()
+        self.assertIn("body.sidebar-open .sidebar", css)
+        # The old broken rule must be gone.
+        self.assertNotIn(".main-wrapper.sidebar-open .sidebar", css)
+
+    def test_sidebar_is_sibling_of_main_wrapper(self):
+        """In base.html the .sidebar must come BEFORE .main-wrapper and
+        must NOT be nested inside it — otherwise the descendant selector
+        approach silently breaks (the original bug)."""
+        html = self.client.get(self.url).content.decode()
+        sidebar_pos = html.find('class="sidebar')
+        wrapper_pos = html.find('class="main-wrapper"')
+        self.assertGreater(sidebar_pos, 0, "sidebar element not found")
+        self.assertGreater(wrapper_pos, 0, "main-wrapper element not found")
+        self.assertLess(
+            sidebar_pos, wrapper_pos,
+            ".sidebar must appear before .main-wrapper (sibling), not inside it",
+        )
+
