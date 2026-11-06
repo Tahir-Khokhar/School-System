@@ -169,4 +169,13 @@
     </div>
   </div>
 </div>
+
+<!-- Mobile bottom nav -->
+<div class="portal-bottom-nav">
+  <a href="{% url 'portal:parent_home' %}" class="active"><i class="bi bi-house"></i>Home</a>
+  <a href="{% url 'portal:parent_children' %}"><i class="bi bi-people"></i>Children</a>
+  <a href="{% url 'portal:parent_fees' %}"><i class="bi bi-receipt"></i>Fees</a>
+  <a href="{% url 'portal:parent_results' %}"><i class="bi bi-award"></i>Results</a>
+  <a href="{% url 'notifications:list' %}"><i class="bi bi-bell"></i>Alerts</a>
+</div>
 {% endblock %}
