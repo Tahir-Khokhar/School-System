@@ -48,14 +48,14 @@
       <!-- Welcome area -->
       <div class="d-flex justify-content-between align-items-center mb-4">
         <div class="d-flex align-items-center gap-3">
-          <div class="avatar-sm" style="width:64px;height:64px;font-size:1.8rem;background:var(--aps-green);color:var(--aps-gold);">{{ teacher.full_name|slice:":1"|upper }}</div>
+          <div class="avatar-sm avatar-lg">{{ teacher.full_name|slice:":1"|upper }}</div>
           <div>
-            <h1 class="h3 fw-bold mb-0" style="color:var(--aps-green);">Welcome, {{ teacher.full_name }}</h1>
+            <h1 class="h3 fw-bold mb-0 text-aps-green">Welcome, {{ teacher.full_name }}</h1>
             <p class="text-muted-2 small mb-0">{{ teacher.employee_id }} · {{ teacher.designation|default:"Teacher" }} · {{ teacher.get_teaching_level_display|default:"" }}</p>
           </div>
         </div>
         <div>
-          <a href="{% url 'attendance:daily_mark' %}" class="btn btn-success btn-sm" style="background:var(--aps-green);border-color:var(--aps-green);"><i class="bi bi-check2-square me-1"></i>Mark Attendance</a>
+          <a href="{% url 'attendance:daily_mark' %}" class="btn btn-aps-green btn-sm"><i class="bi bi-check2-square me-1"></i>Mark Attendance</a>
           {% if perms.payroll.view_payroll %}
           <a href="{% url 'payroll:payroll_list' %}?q={{ teacher.employee_id|default:'' }}" class="btn btn-outline-success btn-sm"><i class="bi bi-cash-coin me-1"></i>My Salary</a>
           {% endif %}
@@ -68,34 +68,34 @@
           <div class="stat-card text-center">
             <div class="stat-icon bg-soft-primary mx-auto"><i class="bi bi-mortarboard"></i></div>
             <div class="stat-label mt-2">My Classes</div>
-            <div class="stat-value" style="color:var(--aps-green);">{{ my_classes.count|default:0 }}</div>
+            <div class="stat-value text-aps-green">{{ my_classes.count|default:0 }}</div>
           </div>
         </div>
         <div class="col-6 col-md-3">
           <div class="stat-card text-center">
             <div class="stat-icon bg-soft-info mx-auto"><i class="bi bi-journal-bookmark"></i></div>
             <div class="stat-label mt-2">My Subjects</div>
-            <div class="stat-value" style="color:var(--aps-green);">{{ my_subjects.count|default:0 }}</div>
+            <div class="stat-value text-aps-green">{{ my_subjects.count|default:0 }}</div>
           </div>
         </div>
         <div class="col-6 col-md-3">
           <div class="stat-card text-center">
             <div class="stat-icon bg-soft-success mx-auto"><i class="bi bi-check-circle"></i></div>
             <div class="stat-label mt-2">Attendance Marked Today</div>
-            <div class="stat-value" style="color:var(--aps-green);">{{ today_attendance_count|default:0 }}</div>
+            <div class="stat-value text-aps-green">{{ today_attendance_count|default:0 }}</div>
           </div>
         </div>
         <div class="col-6 col-md-3">
           <div class="stat-card text-center">
             <div class="stat-icon bg-soft-warning mx-auto"><i class="bi bi-cash-coin"></i></div>
             <div class="stat-label mt-2">Salary Slips</div>
-            <div class="stat-value" style="color:var(--aps-gold-dark);">{{ teacher.payrolls.count|default:0 }}</div>
+            <div class="stat-value text-aps-gold-dark">{{ teacher.payrolls.count|default:0 }}</div>
           </div>
         </div>
       </div>
 
       <!-- Quick Actions -->
-      <h5 class="mb-3" style="color:var(--aps-green);">Quick Actions</h5>
+      <h5 class="mb-3 text-aps-green">Quick Actions</h5>
       <div class="row g-2 mb-4">
         <div class="col-6 col-md-3"><a href="{% url 'attendance:daily_mark' %}" class="btn btn-outline-success w-100"><i class="bi bi-check2-square me-1"></i>Mark Attendance</a></div>
         <div class="col-6 col-md-3"><a href="{% url 'diary:entry_list' %}" class="btn btn-outline-success w-100"><i class="bi bi-journal-text me-1"></i>Diary</a></div>
@@ -144,10 +144,11 @@
 
       <!-- My Salary section -->
       {% if perms.payroll.view_payroll %}
-      <h5 class="mb-3 mt-4" style="color:var(--aps-green);"><i class="bi bi-cash-coin me-2"></i>My Salary</h5>
+      <h5 class="mb-3 mt-4 text-aps-green"><i class="bi bi-cash-coin me-2"></i>My Salary</h5>
       <div class="card mb-4">
         <div class="card-body p-0">
           {% if teacher.payrolls.exists %}
+          <div class="table-responsive">
           <table class="table table-hover mb-0">
             <thead>
               <tr>
@@ -167,7 +168,7 @@
                 <td>{{ currency_symbol|default:"Rs." }}{{ p.basic_salary|floatformat:0|intcomma }}</td>
                 <td>{{ currency_symbol|default:"Rs." }}{{ p.allowances|floatformat:0|intcomma }}</td>
                 <td>{{ currency_symbol|default:"Rs." }}{{ p.deductions|floatformat:0|intcomma }}</td>
-                <td><strong style="color:var(--aps-green);">{{ currency_symbol|default:"Rs." }}{{ p.net_salary|floatformat:0|intcomma }}</strong></td>
+                <td><strong class="text-aps-green">{{ currency_symbol|default:"Rs." }}{{ p.net_salary|floatformat:0|intcomma }}</strong></td>
                 <td><span class="badge badge-{{ p.status }}">{{ p.get_status_display }}</span></td>
                 <td class="text-end">
                   <a href="{% url 'payroll:payroll_detail' p.pk %}" class="btn btn-sm btn-outline-success"><i class="bi bi-eye"></i></a>
@@ -179,6 +180,7 @@
               {% endfor %}
             </tbody>
           </table>
+          </div>
           {% else %}
           <div class="empty-state"><i class="bi bi-cash-coin"></i><p>No salary records yet.</p></div>
           {% endif %}
