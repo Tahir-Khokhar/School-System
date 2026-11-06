@@ -111,6 +111,7 @@
       <div class="card mb-4">
         <div class="card-body p-0">
           {% if pending_challans %}
+          <div class="table-responsive">
           <table class="table table-hover mb-0">
             <thead>
               <tr>
@@ -141,6 +142,7 @@
               {% endfor %}
             </tbody>
           </table>
+          </div>
           {% else %}
           <div class="empty-state"><i class="bi bi-check-circle"></i><p>All fees paid! No pending challans.</p></div>
           {% endif %}
@@ -194,5 +196,14 @@
       {% endif %}
     </div>
   </div>
+</div>
+
+<!-- Mobile bottom nav -->
+<div class="portal-bottom-nav">
+  <a href="{% url 'portal:student_home' %}" class="active"><i class="bi bi-house"></i>Home</a>
+  <a href="{% url 'portal:student_profile' %}"><i class="bi bi-person"></i>Profile</a>
+  <a href="{% url 'portal:student_fees' %}"><i class="bi bi-receipt"></i>Fees</a>
+  <a href="{% url 'portal:student_results' %}"><i class="bi bi-award"></i>Results</a>
+  <a href="{% url 'notifications:list' %}"><i class="bi bi-bell"></i>Alerts</a>
 </div>
 {% endblock %}
