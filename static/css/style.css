@@ -68,9 +68,21 @@ a { text-decoration: none; }
     .main-wrapper {
         margin-left: 0;
     }
-    .main-wrapper.sidebar-open .sidebar {
+    /* Toggled on <body> by app.js. The .sidebar is a sibling of
+       .main-wrapper in base.html, so we cannot use a descendant
+       selector off .main-wrapper — body.sidebar-open reaches it. */
+    body.sidebar-open .sidebar {
         transform: translateX(0);
     }
+    /* Dimmed backdrop over the content; tap to close the drawer. */
+    body.sidebar-open::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, .45);
+        z-index: 1040;
+    }
+    .main-wrapper { position: relative; z-index: 1045; }
 }
 
 .sidebar {
@@ -389,8 +401,8 @@ a { text-decoration: none; }
 
 /* ---------- Portal sidebars (student / teacher / parent) ----------
    Shares the base .sidebar layout (position, width, mobile transform,
-   toggle via .main-wrapper.sidebar-open) so the mobile hamburger and
-   close button in app.js work without any extra wiring. */
+   toggle via body.sidebar-open) so the mobile hamburger and close
+   button in app.js work without any extra wiring. */
 .portal-sidebar {
     background: var(--aps-green-dark);
     color: var(--sidebar-fg);
@@ -440,3 +452,23 @@ a { text-decoration: none; }
 }
 .portal-bottom-nav a i { display: block; font-size: 1.1rem; }
 @media (max-width: 575.98px) { .portal-bottom-nav { display: flex; } }
+
+/* ---------- Portal content helpers (replaces inline styles) ---------- */
+.avatar-lg {
+    width: 64px; height: 64px;
+    font-size: 1.8rem;
+    background: var(--aps-green);
+    color: var(--aps-gold);
+}
+.text-aps-green { color: var(--aps-green); }
+.text-aps-gold-dark { color: var(--aps-gold-dark); }
+.btn-aps-green {
+    background: var(--aps-green);
+    border-color: var(--aps-green);
+    color: #fff;
+}
+.btn-aps-green:hover {
+    background: var(--aps-green-dark);
+    border-color: var(--aps-green-dark);
+    color: #fff;
+}
