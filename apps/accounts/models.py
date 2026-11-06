@@ -13,8 +13,9 @@ class RoleAwareUserManager(UserManager):
     """Extends UserManager so createsuperuser sets role=SUPER_ADMIN.
 
     Without this, the default role=STUDENT means a superuser created via
-    `manage.py createsuperuser` is redirected to the student portal by
-    DashboardHomeView.dispatch (which checks role before is_superuser).
+    `manage.py createsuperuser` would have no staff role. DashboardHomeView
+    checks is_superuser first, so this role assignment guarantees the
+    superuser lands on the admin dashboard.
     """
 
     def create_superuser(self, username, email=None, password=None, **extra_fields):
