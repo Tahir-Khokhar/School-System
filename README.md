@@ -77,6 +77,9 @@ python manage.py create_school_roles
 # 6. Seed demo data — creates 12 demo users + a full demo dataset
 #    (idempotent — safe to re-run; --reset wipes everything first)
 python manage.py seed_demo_data
+#    Fallback: if you see "Unknown command: 'seed_demo_data'" (older
+#    checkout without the command), use the legacy seeder instead:
+#    python manage.py generate_demo_data
 
 # 7. Run server
 python manage.py runserver
