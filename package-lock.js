@@ -1,0 +1,6 @@
+{
+  "name": "school_erp",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {}
+}
