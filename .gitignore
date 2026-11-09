@@ -35,3 +35,7 @@ records.txt
 # Environment
 .env
 .env.local
+
+# JS test dependencies (tests/js/)
+tests/js/node_modules/
+tests/js/package-lock.json
