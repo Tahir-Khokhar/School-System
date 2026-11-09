@@ -1,124 +1,466 @@
-// app.js — shared JavaScript for all pages.
-// Loaded by base.html via {% static 'js/app.js' %}
-// All inline <script> blocks have been moved here for strict CSP compliance.
 
-document.addEventListener('DOMContentLoaded', function() {
+/*
+ * app.js — shared JavaScript for all pages.
+ *
+ * Loaded by base.html.
+ * External JavaScript only — compatible with strict CSP.
+ */
 
-    // ---- Generic data-confirm handler (also used for document deletes) ----
-    // Any form with data-confirm="message" will show a confirm dialog before submitting.
-    // Works for: academic year activation, document deletes, phone deletes, etc.
-    // NOTE: documents.js was deleted to avoid double-confirm. All confirmations
-    // go through this single handler.
-    document.querySelectorAll('form[data-confirm]').forEach(function(form) {
-        form.addEventListener('submit', function(e) {
-            var msg = form.getAttribute('data-confirm') || 'Are you sure?';
-            if (!window.confirm(msg)) {
-                e.preventDefault();
-            }
-        });
-    });
+(function () {
+    "use strict";
 
-    // ---- Toast auto-hide ----
-    // Toasts with data-auto-hide="5000" will auto-dismiss after 5 seconds.
-    document.querySelectorAll('.toast[data-auto-hide]').forEach(function(t) {
-        var delay = parseInt(t.getAttribute('data-auto-hide')) || 5000;
-        setTimeout(function() {
-            var toast = new bootstrap.Toast(t);
-            toast.hide();
-        }, delay);
-    });
+    /**
+     * Initialize shared application functionality.
+     */
+    function initializeApp() {
 
-    // ---- Sidebar toggle (mobile) ----
-    // We toggle a class on <body> rather than on .main-wrapper, because
-    // in base.html the .sidebar is a SIBLING of .main-wrapper, not a
-    // descendant — so a .main-wrapper.sidebar-open .sidebar descendant
-    // selector would never match and the drawer would never open.
-    var sidebarToggle = document.getElementById('sidebarToggle');
-    if (sidebarToggle) {
-        sidebarToggle.addEventListener('click', function() {
-            document.body.classList.toggle('sidebar-open');
-        });
-    }
+        // --------------------------------------------------
+        // FORM CONFIRMATION
+        // --------------------------------------------------
 
-    // ---- Sidebar close button (mobile) ----
-    var sidebarCloseBtn = document.getElementById('sidebarCloseBtn');
-    if (sidebarCloseBtn) {
-        sidebarCloseBtn.addEventListener('click', function() {
-            document.body.classList.remove('sidebar-open');
-        });
-    }
+        // Handle all forms using data-confirm.
+        document.querySelectorAll("form[data-confirm]").forEach(function (form) {
 
-    // ---- Tap content to close the mobile drawer ----
-    // The dimmed backdrop sits above the content; tapping the visible
-    // content area (.main-wrapper) closes the drawer too.
-    var mainWrapper = document.getElementById('main-wrapper');
-    if (mainWrapper) {
-        mainWrapper.addEventListener('click', function() {
-            if (document.body.classList.contains('sidebar-open')) {
-                document.body.classList.remove('sidebar-open');
-            }
-        });
-    }
+            form.addEventListener("submit", function (event) {
 
-    // ---- Active sidebar link highlighting ----
-    // Highlights the nav link whose href matches the current page URL.
-    var currentPath = window.location.pathname;
-    document.querySelectorAll('.sidebar-nav .nav-link, .portal-sidebar a').forEach(function(link) {
-        var href = link.getAttribute('href');
-        if (href && href !== '#' && currentPath.indexOf(href) === 0 && href !== '/') {
-            link.classList.add('active');
-        } else if (href === currentPath) {
-            link.classList.add('active');
-        }
-    });
+                const message =
+                    form.getAttribute("data-confirm") || "Are you sure?";
 
-    // ---- Global search (Ctrl+K) ----
-    document.addEventListener('keydown', function(e) {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-            e.preventDefault();
-            var search = document.getElementById('globalSearchInput');
-            if (search) search.focus();
-        }
-    });
+                if (!window.confirm(message)) {
+                    event.preventDefault();
+                }
 
-    // ---- Theme toggle (writes BOTH cookie and localStorage) ----
-    var themeToggle = document.getElementById('themeToggle');
-    if (themeToggle) {
-        themeToggle.addEventListener('click', function() {
-            var html = document.documentElement;
-            var current = html.getAttribute('data-bs-theme');
-            var newTheme = current === 'dark' ? 'light' : 'dark';
-            html.setAttribute('data-bs-theme', newTheme);
-            // Write localStorage for JS reads.
-            localStorage.setItem('theme', newTheme);
-            // Write cookie so server-side template (base.html) reads it
-            // on the NEXT page load — prevents the "light flash" on dark-mode users.
-            document.cookie = 'theme=' + newTheme + ';path=/;max-age=31536000';
-        });
-        // Restore saved theme from cookie (preferred) or localStorage.
-        var cookieMatch = document.cookie.match(/theme=(dark|light)/);
-        var saved = cookieMatch ? cookieMatch[1] : localStorage.getItem('theme');
-        if (saved) {
-            document.documentElement.setAttribute('data-bs-theme', saved);
-        }
-    }
-
-    // ---- Mark All Present button (attendance page) ----
-    var markAllBtn = document.getElementById('markAllPresentBtn');
-    if (markAllBtn) {
-        markAllBtn.addEventListener('click', function() {
-            document.querySelectorAll('select[name^="form-"][name$="-status"]').forEach(function(s) {
-                s.value = 'present';
             });
+
         });
+
+
+        // --------------------------------------------------
+        // TOAST AUTO-HIDE
+        // --------------------------------------------------
+
+        const toastElements = document.querySelectorAll(
+            '.toast[data-auto-hide]'
+        );
+
+        toastElements.forEach(function (toastElement) {
+
+            const rawDelay = Number.parseInt(
+                toastElement.getAttribute("data-auto-hide"),
+                10
+            );
+
+            const delay = Number.isFinite(rawDelay) && rawDelay > 0
+                ? rawDelay
+                : 5000;
+
+            // Ensure Bootstrap Toast is available.
+            if (
+                !window.bootstrap ||
+                !window.bootstrap.Toast
+            ) {
+                console.warn(
+                    "Bootstrap Toast is unavailable. Toast auto-hide skipped."
+                );
+                return;
+            }
+
+            const toast = window.bootstrap.Toast.getOrCreateInstance(
+                toastElement,
+                { delay: delay }
+            );
+
+            window.setTimeout(function () {
+                toast.hide();
+            }, delay);
+
+        });
+
+
+        // --------------------------------------------------
+        // MOBILE SIDEBAR
+        // --------------------------------------------------
+        // The sidebar (.sidebar) is a SIBLING of .main-wrapper in
+        // base.html, not a descendant. Toggling a class on .main-wrapper
+        // and using a .main-wrapper.sidebar-open .sidebar descendant
+        // selector would never match. We toggle on <body> instead, so
+        // body.sidebar-open .sidebar reaches the sibling drawer.
+
+        const sidebarToggle = document.getElementById("sidebarToggle");
+        const sidebarCloseBtn = document.getElementById("sidebarCloseBtn");
+
+        function closeSidebar() {
+
+            document.body.classList.remove("sidebar-open");
+
+            if (sidebarToggle) {
+                sidebarToggle.setAttribute("aria-expanded", "false");
+            }
+
+        }
+
+        function openSidebar() {
+
+            document.body.classList.add("sidebar-open");
+
+            if (sidebarToggle) {
+                sidebarToggle.setAttribute("aria-expanded", "true");
+                sidebarToggle.setAttribute("aria-controls", "sidebar");
+            }
+
+        }
+
+        if (sidebarToggle) {
+
+            sidebarToggle.addEventListener("click", function (event) {
+
+                // Stop the click from bubbling into the document-level
+                // tap-to-close handler below, which would immediately
+                // undo the toggle.
+                event.stopPropagation();
+
+                if (document.body.classList.contains("sidebar-open")) {
+                    closeSidebar();
+                } else {
+                    openSidebar();
+                }
+
+            });
+
+        }
+
+        if (sidebarCloseBtn) {
+
+            sidebarCloseBtn.addEventListener("click", closeSidebar);
+
+        }
+
+        // Close the mobile sidebar using the Escape key.
+        document.addEventListener("keydown", function (event) {
+
+            if (event.key === "Escape") {
+                closeSidebar();
+            }
+
+        });
+
+        // Tap outside the sidebar to close it. This is a document-level
+        // handler so it catches clicks on the dimmed backdrop area too.
+        // The toggle button calls stopPropagation() so its click never
+        // reaches here; clicks inside the sidebar are ignored too.
+        document.addEventListener("click", function (event) {
+
+            if (!document.body.classList.contains("sidebar-open")) {
+                return;
+            }
+
+            if (event.target.closest(".sidebar")) {
+                return;
+            }
+
+            if (event.target.closest("#sidebarToggle")) {
+                return;
+            }
+
+            closeSidebar();
+
+        });
+
+
+        // --------------------------------------------------
+        // ACTIVE SIDEBAR NAVIGATION
+        // --------------------------------------------------
+
+        const currentPath = window.location.pathname;
+
+        const sidebarLinks = document.querySelectorAll(
+            ".sidebar-nav .nav-link, .portal-sidebar a"
+        );
+
+        sidebarLinks.forEach(function (link) {
+
+            const href = link.getAttribute("href");
+
+            if (!href || href === "#" || href.startsWith("javascript:")) {
+                return;
+            }
+
+            try {
+
+                const linkUrl = new URL(href, window.location.origin);
+
+                // Ignore external links.
+                if (linkUrl.origin !== window.location.origin) {
+                    return;
+                }
+
+                const linkPath = linkUrl.pathname;
+
+                // Match exact paths or complete parent paths.
+                const isExactMatch = currentPath === linkPath;
+
+                const isParentMatch =
+                    linkPath !== "/" &&
+                    currentPath.startsWith(
+                        linkPath.endsWith("/")
+                            ? linkPath
+                            : linkPath + "/"
+                    );
+
+                if (isExactMatch || isParentMatch) {
+                    link.classList.add("active");
+                }
+
+            } catch (error) {
+
+                console.warn(
+                    "Unable to process sidebar link:",
+                    href,
+                    error
+                );
+
+            }
+
+        });
+
+
+        // --------------------------------------------------
+        // GLOBAL SEARCH (CTRL + K)
+        // --------------------------------------------------
+
+        document.addEventListener("keydown", function (event) {
+
+            if (
+                (event.ctrlKey || event.metaKey) &&
+                event.key.toLowerCase() === "k"
+            ) {
+
+                const searchInput = document.getElementById(
+                    "globalSearchInput"
+                );
+
+                if (searchInput) {
+
+                    event.preventDefault();
+                    searchInput.focus();
+
+                }
+
+            }
+
+        });
+
+
+        // --------------------------------------------------
+        // THEME MANAGEMENT
+        // --------------------------------------------------
+
+        const themeToggle = document.getElementById("themeToggle");
+        const htmlElement = document.documentElement;
+
+        /**
+         * Read a cookie by its exact name.
+         */
+        function getCookie(name) {
+
+            const cookies = document.cookie
+                ? document.cookie.split(";")
+                : [];
+
+            for (const cookie of cookies) {
+
+                const separatorIndex = cookie.indexOf("=");
+
+                if (separatorIndex === -1) {
+                    continue;
+                }
+
+                const cookieName = cookie
+                    .slice(0, separatorIndex)
+                    .trim();
+
+                if (cookieName === name) {
+                    return cookie.slice(separatorIndex + 1).trim();
+                }
+
+            }
+
+            return null;
+        }
+
+        /**
+         * Read saved theme safely.
+         */
+        function getSavedTheme() {
+
+            const cookieTheme = getCookie("theme");
+
+            if (
+                cookieTheme === "light" ||
+                cookieTheme === "dark"
+            ) {
+                return cookieTheme;
+            }
+
+            try {
+
+                const storedTheme = window.localStorage.getItem("theme");
+
+                if (
+                    storedTheme === "light" ||
+                    storedTheme === "dark"
+                ) {
+                    return storedTheme;
+                }
+
+            } catch (error) {
+
+                console.warn(
+                    "Local storage is unavailable for theme preferences."
+                );
+
+            }
+
+            return null;
+        }
+
+        /**
+         * Apply theme and save the preference.
+         */
+        function setTheme(theme) {
+
+            if (theme !== "light" && theme !== "dark") {
+                return;
+            }
+
+            htmlElement.setAttribute("data-bs-theme", theme);
+
+            // Save preference in localStorage.
+            try {
+
+                window.localStorage.setItem("theme", theme);
+
+            } catch (error) {
+
+                console.warn(
+                    "Unable to save theme in local storage.",
+                    error
+                );
+
+            }
+
+            // Save preference in cookie.
+            const secureFlag = window.location.protocol === "https:"
+                ? ";Secure"
+                : "";
+
+            document.cookie =
+                "theme=" + theme +
+                ";path=/" +
+                ";max-age=31536000" +
+                ";SameSite=Lax" +
+                secureFlag;
+
+        }
+
+        // Restore theme even if the toggle button is unavailable.
+        const savedTheme = getSavedTheme();
+
+        if (savedTheme) {
+            htmlElement.setAttribute("data-bs-theme", savedTheme);
+        }
+
+        if (themeToggle) {
+
+            themeToggle.addEventListener("click", function () {
+
+                const currentTheme =
+                    htmlElement.getAttribute("data-bs-theme");
+
+                const newTheme =
+                    currentTheme === "dark" ? "light" : "dark";
+
+                setTheme(newTheme);
+
+            });
+
+        }
+
+
+        // --------------------------------------------------
+        // ATTENDANCE: MARK ALL PRESENT
+        // --------------------------------------------------
+
+        const markAllBtn = document.getElementById(
+            "markAllPresentBtn"
+        );
+
+        if (markAllBtn) {
+
+            markAllBtn.addEventListener("click", function () {
+
+                const attendanceFields = document.querySelectorAll(
+                    'select[name^="form-"][name$="-status"]'
+                );
+
+                attendanceFields.forEach(function (select) {
+
+                    select.value = "present";
+
+                    // Notify other scripts about the value change.
+                    select.dispatchEvent(
+                        new Event("change", { bubbles: true })
+                    );
+
+                });
+
+            });
+
+        }
+
+
+        // --------------------------------------------------
+        // LANDING PAGE NAVIGATION
+        // --------------------------------------------------
+
+        const navToggle = document.getElementById("mainNavToggle");
+        const mainNav = document.getElementById("mainNav");
+
+        if (navToggle && mainNav) {
+
+            navToggle.addEventListener("click", function () {
+
+                const isOpen = mainNav.classList.toggle("open");
+
+                navToggle.setAttribute(
+                    "aria-expanded",
+                    String(isOpen)
+                );
+
+            });
+
+        }
+
     }
 
-    // ---- Landing page nav toggle ----
-    var navToggle = document.getElementById('mainNavToggle');
-    var mainNav = document.getElementById('mainNav');
-    if (navToggle && mainNav) {
-        navToggle.addEventListener('click', function() {
-            mainNav.classList.toggle('open');
-        });
+
+    // --------------------------------------------------
+    // DOCUMENT INITIALIZATION
+    // --------------------------------------------------
+
+    // Supports both normal and dynamically loaded scripts.
+    if (document.readyState === "loading") {
+
+        document.addEventListener(
+            "DOMContentLoaded",
+            initializeApp,
+            { once: true }
+        );
+
+    } else {
+
+        initializeApp();
+
     }
-});
+
+})();
