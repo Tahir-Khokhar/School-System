@@ -98,13 +98,18 @@ class DashboardChartContextTests(TestCase):
 
 
 class MobileSidebarToggleTests(TestCase):
-    """Guards against the phone-sidebar regression: the ☰ button toggled
-    `.main-wrapper.sidebar-open`, but in base.html the `.sidebar` is a
-    SIBLING of `.main-wrapper`, so the `.main-wrapper.sidebar-open .sidebar`
-    descendant selector never matched and the drawer stayed hidden on phones.
+    """Guards against the phone-sidebar regression.
 
-    These tests lock in the fix: the toggle is on <body>, the CSS rule keys
-    off body.sidebar-open, and the toggle/close buttons are present.
+    Round 7's fix toggled ``body.sidebar-open`` (correct) but added a
+    document-level tap-to-close handler that immediately removed the
+    class on the same click — so the ☰ button opened the drawer and
+    closed it in the same event. The string-matching tests passed
+    anyway because they only searched the source for substrings.
+
+    These tests use a real jsdom click test (``tests/js/test_sidebar.js``)
+    that loads ``app.js``, clicks the actual ☰ button, and asserts the
+    ``sidebar-open`` class survives the click. Two template-level checks
+    are kept as quick structural guards.
     """
     @classmethod
     def setUpTestData(cls):
@@ -123,36 +128,10 @@ class MobileSidebarToggleTests(TestCase):
         self.assertIn("sidebarToggle", html)
         self.assertIn("sidebarCloseBtn", html)
 
-    def test_app_js_toggles_body_not_main_wrapper(self):
-        """app.js must toggle body.sidebar-open. Toggling a class on
-        .main-wrapper is the regression — its descendant selector can
-        never reach the sibling .sidebar."""
-        import os
-        from django.conf import settings
-        app_js = open(
-            os.path.join(settings.BASE_DIR, "static", "js", "app.js")
-        ).read()
-        self.assertIn("document.body.classList.toggle", app_js)
-        # The old broken selector must not be present.
-        self.assertNotIn("mainWrapper.classList.toggle", app_js)
-        self.assertNotIn('main-wrapper").classList', app_js)
-
-    def test_style_css_has_body_sidebar_open_rule(self):
-        """style.css must define body.sidebar-open .sidebar — a class on
-        .main-wrapper would not reach the sibling sidebar."""
-        import os
-        from django.conf import settings
-        css = open(
-            os.path.join(settings.BASE_DIR, "static", "css", "style.css")
-        ).read()
-        self.assertIn("body.sidebar-open .sidebar", css)
-        # The old broken rule must be gone.
-        self.assertNotIn(".main-wrapper.sidebar-open .sidebar", css)
-
     def test_sidebar_is_sibling_of_main_wrapper(self):
         """In base.html the .sidebar must come BEFORE .main-wrapper and
-        must NOT be nested inside it — otherwise the descendant selector
-        approach silently breaks (the original bug)."""
+        must NOT be nested inside it — otherwise a descendant selector
+        off .main-wrapper can never reach the sidebar (the original bug)."""
         html = self.client.get(self.url).content.decode()
         sidebar_pos = html.find('class="sidebar')
         wrapper_pos = html.find('class="main-wrapper"')
@@ -162,4 +141,50 @@ class MobileSidebarToggleTests(TestCase):
             sidebar_pos, wrapper_pos,
             ".sidebar must appear before .main-wrapper (sibling), not inside it",
         )
+
+    def test_jsdom_click_opens_sidebar(self):
+        """The real test: load app.js in jsdom, click the ☰ button, and
+        assert ``body.sidebar-open`` survives the click. This catches the
+        event-bubbling bug where the toggle handler adds the class and the
+        tap-to-close handler removes it on the same click.
+
+        Requires Node.js + jsdom (``npm install`` in ``tests/js/``).
+        Skipped if Node is unavailable so CI without Node still passes.
+        """
+        import os
+        import shutil
+        import subprocess
+        from django.conf import settings
+
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("Node.js not installed — jsdom test skipped")
+
+        test_script = os.path.join(
+            settings.BASE_DIR, "tests", "js", "test_sidebar.js"
+        )
+        node_modules = os.path.join(
+            settings.BASE_DIR, "tests", "js", "node_modules", "jsdom"
+        )
+        if not os.path.isfile(test_script):
+            self.skipTest(f"jsdom test script not found: {test_script}")
+        if not os.path.isdir(node_modules):
+            self.skipTest(
+                "jsdom not installed — run `npm install` in tests/js/"
+            )
+
+        result = subprocess.run(
+            [node, test_script],
+            capture_output=True,
+            text=True,
+            cwd=os.path.join(settings.BASE_DIR, "tests", "js"),
+            timeout=30,
+        )
+        if result.returncode != 0:
+            self.fail(
+                "jsdom sidebar test failed (return code %d).\n"
+                "stdout:\n%s\nstderr:\n%s"
+                % (result.returncode, result.stdout, result.stderr)
+            )
+
 
